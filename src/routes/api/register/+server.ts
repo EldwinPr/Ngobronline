@@ -1,0 +1,68 @@
+import type { RequestHandler } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
+import bcrypt from 'bcryptjs';
+import { prisma } from '$lib/server/prisma';
+
+const SALT_ROUNDS = Number(process.env.SALT_ROUNDS) || 10;
+
+export const POST: RequestHandler = async ({ request }) => {
+  try {
+    const { username, password, publicKey } = await request.json();
+
+    // 1) Basic validation
+    if (
+      typeof username !== 'string' ||
+      username.length < 3 ||
+      username.length > 30
+    ) {
+      return json({ error: 'Username must be 3–30 characters' }, { status: 400 });
+    }
+
+    if (
+      typeof password !== 'string' ||
+      password.length < 8 ||
+      password.length > 100
+    ) {
+      return json({ error: 'Password must be 8–100 characters' }, { status: 400 });
+    }
+
+    if (
+      typeof publicKey !== 'object' ||
+      publicKey === null
+    ) {
+      return json({ error: 'Invalid publicKey' }, { status: 400 });
+    }
+
+    // 2) Hash the password
+    const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+
+    // 3) Store in database
+    const user = await prisma.user.create({
+      data: {
+        username,
+        hashedPassword,
+        publicKey: JSON.stringify(publicKey)
+      }
+    });
+
+    // 4) Return success
+    return json(
+      { ok: true, user: { id: user.id, username: user.username } },
+      { status: 201 }
+    );
+  } catch (err: any) {
+    // Unique violation?
+    if (
+      err.code === 'P2002' &&
+      err.meta?.target?.includes('username')
+    ) {
+      return json({ error: 'Username already taken' }, { status: 409 });
+    }
+
+    console.error('Registration error:', err);
+    return json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+};
