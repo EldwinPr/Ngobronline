@@ -1,0 +1,141 @@
+# To-Do List
+
+## Phase 1: Setup & Backend Foundation
+
+1. Configure Development Tools
+   - [x] Set up Tailwind CSS
+   - [x] Configure ESLint and Prettier
+   - [x] Configure Vitest
+
+2. Initialize Prisma
+   - [x] Run `npx prisma init`
+   - [x] Configure database connection string in `.env`
+
+3. Define Database Schema
+   - [x] Edit `prisma/schema.prisma`
+   - [x] Define `User` model with `id`, `username`, `hashedPassword`, and `publicKey`
+   - [x] Define `PublicKeyHistory` model with `id`, `userId`, `publicKey`, `createdAt`, `isCurrent`
+
+4. Run Database Migration
+   - [x] Run `npx prisma migrate dev --name add_public_key_history`
+
+5. Implement Server-Side User Registration (`+server.js`)
+   - [x] Create `src/routes/api/register/+server.js`
+   - [x] Handle `POST` requests
+   - [x] Receive username, password, and public key
+   - [x] Hash password using `bcryptjs`
+   - [x] Create new `User` record in the database
+   - [x] Create new `PublicKeyHistory` record with `isCurrent = true`
+
+6. Implement Server-Side User Login (`+server.js`)
+   - [x] Create `src/routes/api/login/+server.js`
+   - [x] Handle `POST` requests
+   - [x] Receive username and password
+   - [x] Find user by username
+   - [x] Compare password with stored hashed password
+   - [x] Return success or failure response
+
+7. Implement Server-Side Get Users/Public Keys (`+server.js`)
+   - [x] Create `src/routes/api/users/+server.js`
+   - [x] Handle `GET` requests
+   - [x] Fetch list of users with usernames and public keys
+   - [x] Return the list as a JSON response
+
+## Phase 2: Client-Side Implementation & Key Management
+
+8. Create Registration and Login Pages/Components
+   - [ ] Create Svelte pages or components for registration and login
+   - [ ] Handle form submissions
+   - [ ] Use `fetch` to send data to server-side API endpoints
+
+9. Implement Client-Side ECDSA Key Generation (Registration)
+   - [ ] In registration component/logic:
+   - [ ] Generate ECDSA key pair using `window.crypto.subtle.generateKey()`
+   - [ ] Store private key securely in `localStorage`
+   - [ ] Send username, password, and public key to server's registration endpoint
+
+10. Implement Client-Side Private Key Retrieval (Login)
+    - [ ] In login success logic:
+    - [ ] Retrieve user's private key from `localStorage`
+
+11. Implement Client-Side and Server-Side Public Key Update
+    - Database Schema Update:
+      - [ ] Edit `prisma/schema.prisma`
+      - [ ] Define `PublicKeyHistory` model with `id`, `userId`, `publicKey`, `createdAt`, `isCurrent`
+    - Client-Side:
+      - [ ] In a new component or utility:
+      - [ ] Generate a new ECDSA key pair
+      - [ ] Send the new public key to the server's "update public key" endpoint
+      - [ ] Update the stored private key in `localStorage`
+    - Server-Side:
+      - [ ] Create `src/routes/api/update-public-key/+server.js`
+      - [ ] Handle `POST` requests
+      - [ ] Receive user ID and new public key
+      - [ ] Update the `isCurrent` flag of the existing `PublicKeyHistory` record to `false`
+      - [ ] Create a new `PublicKeyHistory` record with the new public key and `isCurrent = true`
+    - Database Migration:
+      - [ ] Run `npx prisma migrate dev --name add_public_key_history`
+
+## Phase 3: Real-time Chat & Security Implementation
+
+12. Set up WebSocket Server
+    - [ ] Integrate the `ws` library
+    - [ ] Handle new connections, messages, and disconnections
+    - [ ] Maintain a list of connected users and their WebSocket connections
+
+13. Set up WebSocket Client
+    - [ ] In chat page/component, establish WebSocket connection to server
+    - [ ] Handle incoming messages from the server
+
+14. Implement Client-Side Message Sending (Signing)
+    - [ ] In chat input component:
+    - [ ] Hash plaintext message using SHA-3 library
+    - [ ] Retrieve user's private key from storage
+    - [ ] Sign the SHA-3 hash using `window.crypto.subtle.sign()`
+    - [ ] Send message object (plaintext, hash, signature) to server via WebSocket
+
+15. Implement Server-Side Message Handling
+    - [ ] Receive message object from client
+    - [ ] Store message in the database
+    - [ ] Forward the message to the recipient's WebSocket connection
+
+16. Implement Client-Side Message Receiving (Verification)
+    - [ ] In chat component, when a message is received:
+    - [ ] Extract plaintext, received hash, and received signature
+    - [ ] Fetch sender's public key
+    - [ ] Re-hash the plaintext using SHA-3
+    - [ ] Verify the signature using `window.crypto.subtle.verify()`
+    - [ ] Display the message with a "Verified" or "Unverified" label
+
+## Phase 4: UI & Refinement
+
+17. Build Contact List UI
+    - [ ] Fetch the list of users and their public keys from `/api/users` endpoint
+    - [ ] Display the list and allow user to select a contact
+
+18. Build Chat Interface UI
+    - [ ] Display the messages for the current chat session
+    - [ ] Implement the message input area
+
+19. Add Error Handling and Loading States
+    - [ ] Handle errors during API calls, WebSocket connections, and cryptographic operations
+    - [ ] Show loading indicators where necessary
+
+20. Write Tests (Using Vitest)
+    - [ ] Write unit tests for server-side functions
+    - [ ] Write unit tests for client-side cryptographic functions
+    - [ ] Write tests for WebSocket message handling logic
+
+21. Refine and Iterate
+    - [ ] Improve the user interface and user experience
+    - [ ] Address any bugs or issues found during testing
+    - [ ] Consider edge cases (e.g., what happens if a public key is missing?)
+
+## Phase 5: Deployment
+
+22. Prepare for Deployment
+    - [ ] Ensure SvelteKit adapter is correctly configured
+    - [ ] Set up environment variables for production database and secrets
+
+23. Deploy
+    - [ ] Deploy the application to a hosting platform
