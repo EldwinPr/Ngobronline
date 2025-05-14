@@ -40,7 +40,10 @@
     - [ ] Check for private key in local storage and prompt if missing
 
 11. Implement Client-Side and Server-Side Public Key Update
-    - [x] Update public key management logic
+    - [ ] change db schema: simplify publickey table, and add active pbkey in user
+    - [ ] update register so keys are generated from username and password
+    - [ ] after login check whether there's a pkey in local storage, if not add pop-up saying "private key not detected, to generate in local storage enter your password" or something similiar.
+
 
 ## Phase 3: Real-time Chat & Security Implementation
 
