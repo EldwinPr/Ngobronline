@@ -9,7 +9,6 @@ export const POST: RequestHandler = async ({ request }) => {
   try {
     const { username, password, publicKeyString } = await request.json();
 
-    // 1) Basic validation
     if (
       typeof username !== 'string' ||
       username.length < 3 ||
@@ -33,10 +32,8 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ error: 'Valid publicKeyString is required' }, { status: 400 });
     }
 
-    // 2) Hash the password
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
-    // 3) Store in database
     const user = await prisma.user.create({
       data: {
         username,
@@ -51,7 +48,6 @@ export const POST: RequestHandler = async ({ request }) => {
       },
     });
 
-    // 4) Return success
     return json(
       { ok: true, user: { id: user.id, username: user.username } },
       { status: 201 }

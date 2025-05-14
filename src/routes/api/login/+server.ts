@@ -13,7 +13,6 @@ export const POST: RequestHandler = async ({ request }) => {
     );
   }
 
-  // 1) Find user
   const user = await prisma.user.findUnique({
     where: { username }
   });
@@ -25,7 +24,6 @@ export const POST: RequestHandler = async ({ request }) => {
     );
   }
 
-  // 2) Compare passwords
   const valid = await bcrypt.compare(password, user.hashedPassword);
   if (!valid) {
     return json(
@@ -34,7 +32,9 @@ export const POST: RequestHandler = async ({ request }) => {
     );
   }
 
-  // 3) Success – return basic user info
+  const headers = new Headers();
+  headers.append('Set-Cookie', `session=${user.id}; Path=/; HttpOnly`);
+
   return json(
     {
       ok: true,
@@ -43,6 +43,6 @@ export const POST: RequestHandler = async ({ request }) => {
         username: user.username
       }
     },
-    { status: 200 }
+    { status: 200, headers }
   );
 };
