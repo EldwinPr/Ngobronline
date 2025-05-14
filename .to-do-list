@@ -13,113 +13,75 @@
 
 3. Define Database Schema
    - [x] Edit `prisma/schema.prisma`
-   - [x] Define `User` model with `id`, `username`, `hashedPassword`, and `publicKey`
-   - [x] Define `PublicKeyHistory` model with `id`, `userId`, `publicKey`, `createdAt`, `isCurrent`
+   - [x] Define `User` model with `id`, `username`, `hashedPassword`, and `activePublicKeyId`
+   - [x] Define `PublicKeyHistory` model with `id`, `userId`, `publicKey`, `createdAt`
 
 4. Run Database Migration
    - [x] Run `npx prisma migrate dev --name add_public_key_history`
 
-5. Implement Server-Side User Registration (`+server.js`)
-   - [x] Create `src/routes/api/register/+server.js`
-   - [x] Handle `POST` requests
-   - [x] Receive username, password, and public key
-   - [x] Hash password using `bcryptjs`
-   - [x] Create new `User` record in the database
-   - [x] Create new `PublicKeyHistory` record with `isCurrent = true`
+5. Implement Server-Side User Registration
+   - [x] Handle user registration and store public keys
 
-6. Implement Server-Side User Login (`+server.js`)
-   - [x] Create `src/routes/api/login/+server.js`
-   - [x] Handle `POST` requests
-   - [x] Receive username and password
-   - [x] Find user by username
-   - [x] Compare password with stored hashed password
-   - [x] Return success or failure response
+6. Implement Server-Side User Login
+   - [x] Handle user login and password verification
 
-7. Implement Server-Side Get Users/Public Keys (`+server.js`)
-   - [x] Create `src/routes/api/users/+server.js`
-   - [x] Handle `GET` requests
+7. Implement Server-Side Get Users/Public Keys
    - [x] Fetch list of users with usernames and public keys
-   - [x] Return the list as a JSON response
 
 ## Phase 2: Client-Side Implementation & Key Management
 
 8. Create Registration and Login Pages/Components
-   - [ ] Create Svelte pages or components for registration and login
-   - [ ] Handle form submissions
-   - [ ] Use `fetch` to send data to server-side API endpoints
+   - [x] Implement registration and login forms
 
-9. Implement Client-Side ECDSA Key Generation (Registration)
-   - [ ] In registration component/logic:
-   - [ ] Generate ECDSA key pair using `window.crypto.subtle.generateKey()`
-   - [ ] Store private key securely in `localStorage`
-   - [ ] Send username, password, and public key to server's registration endpoint
+9. Implement Client-Side ECDSA Key Generation
+   - [x] Generate ECDSA key pair and store private key locally
 
-10. Implement Client-Side Private Key Retrieval (Login)
-    - [ ] In login success logic:
-    - [ ] Retrieve user's private key from `localStorage`
+10. Implement Client-Side Private Key Retrieval
+    - [ ] Check for private key in local storage and prompt if missing
 
-11. [x] Implement Client-Side and Server-Side Public Key Update
+11. Implement Client-Side and Server-Side Public Key Update
+    - [x] Update public key management logic
 
 ## Phase 3: Real-time Chat & Security Implementation
 
 12. Set up WebSocket Server
-    - [ ] Integrate the `ws` library
-    - [ ] Handle new connections, messages, and disconnections
-    - [ ] Maintain a list of connected users and their WebSocket connections
+    - [ ] Integrate `ws` library for real-time communication
 
 13. Set up WebSocket Client
-    - [ ] In chat page/component, establish WebSocket connection to server
-    - [ ] Handle incoming messages from the server
+    - [ ] Establish WebSocket connection on client-side
 
-14. Implement Client-Side Message Sending (Signing)
-    - [ ] In chat input component:
-    - [ ] Hash plaintext message using SHA-3 library
-    - [ ] Retrieve user's private key from storage
-    - [ ] Sign the SHA-3 hash using `window.crypto.subtle.sign()`
-    - [ ] Send message object (plaintext, hash, signature) to server via WebSocket
+14. Implement Client-Side Message Sending
+    - [ ] Sign and send messages using ECDSA keys
 
 15. Implement Server-Side Message Handling
-    - [ ] Receive message object from client
-    - [ ] Store message in the database
-    - [ ] Forward the message to the recipient's WebSocket connection
+    - [ ] Store and forward messages to recipients
 
-16. Implement Client-Side Message Receiving (Verification)
-    - [ ] In chat component, when a message is received:
-    - [ ] Extract plaintext, received hash, and received signature
-    - [ ] Fetch sender's public key
-    - [ ] Re-hash the plaintext using SHA-3
-    - [ ] Verify the signature using `window.crypto.subtle.verify()`
-    - [ ] Display the message with a "Verified" or "Unverified" label
+16. Implement Client-Side Message Receiving
+    - [ ] Verify received messages and display status
 
 ## Phase 4: UI & Refinement
 
 17. Build Contact List UI
-    - [ ] Fetch the list of users and their public keys from `/api/users` endpoint
-    - [ ] Display the list and allow user to select a contact
+    - [ ] Display list of users and allow selection
 
 18. Build Chat Interface UI
-    - [ ] Display the messages for the current chat session
-    - [ ] Implement the message input area
+    - [ ] Implement chat display and input area
 
 19. Add Error Handling and Loading States
-    - [ ] Handle errors during API calls, WebSocket connections, and cryptographic operations
-    - [ ] Show loading indicators where necessary
+    - [ ] Implement error handling and loading indicators
 
 20. Write Tests (Using Vitest)
-    - [ ] Write unit tests for server-side functions
-    - [ ] Write unit tests for client-side cryptographic functions
-    - [ ] Write tests for WebSocket message handling logic
+    - [ ] Write tests for server-side and client-side logic
 
 21. Refine and Iterate
-    - [ ] Improve the user interface and user experience
-    - [ ] Address any bugs or issues found during testing
-    - [ ] Consider edge cases (e.g., what happens if a public key is missing?)
+    - [ ] Improve UI/UX and address bugs
 
 ## Phase 5: Deployment
 
 22. Prepare for Deployment
-    - [ ] Ensure SvelteKit adapter is correctly configured
-    - [ ] Set up environment variables for production database and secrets
+    - [ ] Configure environment for production
 
 23. Deploy
-    - [ ] Deploy the application to a hosting platform
+    - [ ] Deploy application to hosting platform
+
+This list is now more concise, focusing on the main tasks without detailed steps.

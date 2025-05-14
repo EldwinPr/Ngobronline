@@ -8,21 +8,20 @@ datasource db {
 }
 
 model User {
-  id             String    @id @default(uuid())
-  username       String    @unique
-  hashedPassword String
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id               String    @id @default(uuid())
+  username         String    @unique
+  hashedPassword   String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  publicKeys     PublicKey[]
-  sentMessages   Message[] @relation("SentMessages")
+  publicKeys       PublicKey[]
+  sentMessages     Message[] @relation("SentMessages")
   receivedMessages Message[] @relation("SentToMessages")
 }
 
 model PublicKey {
   id        String   @id @default(uuid())
   key       String
-  isActive  Boolean  @default(true) // Add this line
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -30,7 +29,6 @@ model PublicKey {
   user      User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
-  @@index([userId, isActive]) // Optional: composite index if you often query active keys for a user
 }
 
 model Message {
