@@ -58,23 +58,7 @@
     - [ ] In login success logic:
     - [ ] Retrieve user's private key from `localStorage`
 
-11. Implement Client-Side and Server-Side Public Key Update
-    - Database Schema Update:
-      - [ ] Edit `prisma/schema.prisma`
-      - [ ] Define `PublicKeyHistory` model with `id`, `userId`, `publicKey`, `createdAt`, `isCurrent`
-    - Client-Side:
-      - [ ] In a new component or utility:
-      - [ ] Generate a new ECDSA key pair
-      - [ ] Send the new public key to the server's "update public key" endpoint
-      - [ ] Update the stored private key in `localStorage`
-    - Server-Side:
-      - [ ] Create `src/routes/api/update-public-key/+server.js`
-      - [ ] Handle `POST` requests
-      - [ ] Receive user ID and new public key
-      - [ ] Update the `isCurrent` flag of the existing `PublicKeyHistory` record to `false`
-      - [ ] Create a new `PublicKeyHistory` record with the new public key and `isCurrent = true`
-    - Database Migration:
-      - [ ] Run `npx prisma migrate dev --name add_public_key_history`
+11. [x] Implement Client-Side and Server-Side Public Key Update
 
 ## Phase 3: Real-time Chat & Security Implementation
 
