@@ -1,29 +1,11 @@
 <script lang="ts">
+  import { deriveEcdsaKeyPair } from '$lib/keyDerivation';
+
   let username = '';
   let password = '';
   let error = '';
   let success = '';
   let loading = false;
-
-  async function generateKeyPair() {
-    const keyPair = await crypto.subtle.generateKey(
-      {
-        name: 'ECDSA',
-        namedCurve: 'P-256',
-      },
-      true,
-      ['sign', 'verify']
-    );
-
-    const publicKeyJwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey);
-    const privateKeyJwk = await crypto.subtle.exportKey('jwk', keyPair.privateKey);
-
-    // Save private key to localStorage
-    localStorage.setItem('ecdsa_private_key', JSON.stringify(privateKeyJwk));
-
-    // Send public key as string
-    return JSON.stringify(publicKeyJwk);
-  }
 
   async function handleSubmit(event: Event) {
     event.preventDefault();
@@ -32,25 +14,27 @@
     loading = true;
 
     try {
-      const publicKeyString = await generateKeyPair();
+      const { publicKey, privateKey } = await deriveEcdsaKeyPair(username, password);
 
+      // Save private key to localStorage
+      localStorage.setItem('ecdsa_private_key', JSON.stringify(privateKey));
+
+      // Send public key to server
       const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, publicKeyString })
+        body: JSON.stringify({ username, publicKey })
       });
 
-      const data = await res.json();
-      loading = false;
-
       if (!res.ok) {
-        error = data.error || 'Registration failed.';
-      } else {
-        success = 'Account created. You can now log in.';
-        window.location.href = '/login';
+        throw new Error('Registration failed.');
       }
+
+      success = 'Account created. You can now log in.';
+      window.location.href = '/login';
     } catch (err) {
       error = 'Key generation or registration failed.';
+    } finally {
       loading = false;
     }
   }
