@@ -11,6 +11,7 @@ model User {
   id               String    @id @default(uuid())
   username         String    @unique
   hashedPassword   String
+  activePublicKey  String
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

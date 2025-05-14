@@ -8,20 +8,7 @@ export const GET: RequestHandler = async () => {
       select: {
         id: true,
         username: true,
-        publicKeys: { // Include the related public keys
-          select: {
-            id: true,       // Select the ID of the public key
-            key: true,      // Select the public key string
-            isActive: true, // Select the active status of the key
-            createdAt: true // Optionally, include createdAt or updatedAt if needed
-          },
-          where: {
-            isActive: true // Optional: Only fetch active public keys by default
-          },
-          orderBy: {
-            createdAt: 'desc' // Optional: Order keys, e.g., newest first
-          }
-        }
+        activePublicKey: true,
       }
     });
     return json({ ok: true, users: users });
