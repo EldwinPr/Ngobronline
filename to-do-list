@@ -37,12 +37,12 @@
    - [x] Generate ECDSA key pair and store private key locally
 
 10. Implement Client-Side Private Key Retrieval
-    - [ ] Check for private key in local storage and prompt if missing
+    - [x] Check for private key in local storage and prompt if missing
 
 11. Implement Client-Side and Server-Side Public Key Update
-    - [ ] change db schema: simplify publickey table, and add active pbkey in user
-    - [ ] update register so keys are generated from username and password
-    - [ ] after login check whether there's a pkey in local storage, if not add pop-up saying "private key not detected, to generate in local storage enter your password" or something similiar.
+    - [x] change db schema: simplify publickey table, and add active pbkey in user
+    - [x] update register so keys are generated based from username and password
+    - [x] after login check whether there's a pkey in local storage, if not add pop-up saying "private key not detected, to generate in local storage enter your password" or something similiar.
 
 
 ## Phase 3: Real-time Chat & Security Implementation
@@ -50,8 +50,9 @@
 12. Set up WebSocket Server
     - [ ] Integrate `ws` library for real-time communication
 
-13. Set up WebSocket Client
+13. Set up WebSocket Client + UI
     - [ ] Establish WebSocket connection on client-side
+    - [ ] Make simple GUI for chat
 
 14. Implement Client-Side Message Sending
     - [ ] Sign and send messages using ECDSA keys
