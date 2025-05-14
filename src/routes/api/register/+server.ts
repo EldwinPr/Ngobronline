@@ -1,4 +1,4 @@
-import type { RequestHandler } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import bcrypt from 'bcryptjs';
 import { prisma } from '$lib/server/prisma';
@@ -7,7 +7,7 @@ const SALT_ROUNDS = Number(process.env.SALT_ROUNDS) || 10;
 
 export const POST: RequestHandler = async ({ request }) => {
   try {
-    const { username, password, publicKey } = await request.json();
+    const { username, password, publicKeyString } = await request.json();
 
     // 1) Basic validation
     if (
@@ -27,10 +27,10 @@ export const POST: RequestHandler = async ({ request }) => {
     }
 
     if (
-      typeof publicKey !== 'object' ||
-      publicKey === null
+      typeof publicKeyString !== 'string' ||
+      publicKeyString.length === 0
     ) {
-      return json({ error: 'Invalid publicKey' }, { status: 400 });
+      return json({ error: 'Valid publicKeyString is required' }, { status: 400 });
     }
 
     // 2) Hash the password
@@ -41,8 +41,14 @@ export const POST: RequestHandler = async ({ request }) => {
       data: {
         username,
         hashedPassword,
-        publicKey: JSON.stringify(publicKey)
-      }
+        publicKeys: {
+          create: [
+            {
+              key: publicKeyString,
+            },
+          ],
+        },
+      },
     });
 
     // 4) Return success
@@ -51,14 +57,12 @@ export const POST: RequestHandler = async ({ request }) => {
       { status: 201 }
     );
   } catch (err: any) {
-    // Unique violation?
     if (
       err.code === 'P2002' &&
       err.meta?.target?.includes('username')
     ) {
       return json({ error: 'Username already taken' }, { status: 409 });
     }
-
     console.error('Registration error:', err);
     return json(
       { error: 'Internal server error' },

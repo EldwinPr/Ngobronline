@@ -5,19 +5,29 @@ import { prisma } from '$lib/server/prisma';
 export const GET: RequestHandler = async () => {
   try {
     const users = await prisma.user.findMany({
-      select: { id: true, username: true, publicKey: true }
+      select: {
+        id: true,
+        username: true,
+        publicKeys: { // Include the related public keys
+          select: {
+            id: true,       // Select the ID of the public key
+            key: true,      // Select the public key string
+            isActive: true, // Select the active status of the key
+            createdAt: true // Optionally, include createdAt or updatedAt if needed
+          },
+          where: {
+            isActive: true // Optional: Only fetch active public keys by default
+          },
+          orderBy: {
+            createdAt: 'desc' // Optional: Order keys, e.g., newest first
+          }
+        }
+      }
     });
+    return json({ ok: true, users: users });
 
-    // Parse the JWK string into an object
-    const parsed = users.map((u) => ({
-      id: u.id,
-      username: u.username,
-      publicKey: JSON.parse(u.publicKey)
-    }));
-
-    return json({ ok: true, users: parsed });
   } catch (err) {
-    console.error(err);
+    console.error('Failed to fetch users:', err); // Added more context to the error log
     return json({ ok: false, error: 'Failed to fetch users.' }, { status: 500 });
   }
 };
