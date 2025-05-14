@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { deriveEcdsaKeyPair } from '$lib/keyDerivation';
+  import { generateKeyPair } from '$lib/keyDerivation';
 
   let username = '';
   let password = '';
@@ -14,26 +14,31 @@
     loading = true;
 
     try {
-      const { publicKey, privateKey } = await deriveEcdsaKeyPair(username, password);
+      const { publicKey, privateKey } = await generateKeyPair(username, password);
+      const publicKeyString = JSON.stringify(publicKey);
 
-      // Save private key to localStorage
       localStorage.setItem('ecdsa_private_key', JSON.stringify(privateKey));
 
-      // Send public key to server
       const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, publicKey })
+        body: JSON.stringify({ username, password, publicKeyString })
       });
 
+      const result = await res.json();
+
       if (!res.ok) {
-        throw new Error('Registration failed.');
+        throw new Error(result.error || 'Registration failed.');
       }
 
       success = 'Account created. You can now log in.';
       window.location.href = '/login';
     } catch (err) {
-      error = 'Key generation or registration failed.';
+      if (err instanceof Error) {
+        error = err.message;
+      } else {
+        error = 'Key generation or registration failed.';
+      }
     } finally {
       loading = false;
     }

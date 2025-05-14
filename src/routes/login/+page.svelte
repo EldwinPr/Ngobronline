@@ -1,53 +1,64 @@
 <script lang="ts">
+  import { generateKeyPair } from '$lib/keyDerivation';
+  import { goto } from '$app/navigation';
+
   let username = '';
   let password = '';
   let error = '';
   let loading = false;
 
-  async function handleSubmit(event: Event) {
+  async function handleLogin(event: Event) {
     event.preventDefault();
     error = '';
     loading = true;
 
-    const res = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
 
-    const data = await res.json();
-    loading = false;
+      const result = await res.json();
 
-    if (!res.ok) {
-      error = data.error || 'Login failed.';
-    } else {
-      // Store user ID and username
-      localStorage.setItem('user_id', data.user.id);
-      localStorage.setItem('username', data.user.username);
-      window.location.href = '/';
+      if (!res.ok) {
+        throw new Error(result.error || 'Login failed.');
+      }
+
+      console.log('Login successful:', result);
+
+      let privateKey = localStorage.getItem('ecdsa_private_key');
+      if (!privateKey) {
+        console.log('Private key not found. Generating a new one...');
+        const keyPair = await generateKeyPair(username, password);
+        privateKey = JSON.stringify(keyPair.privateKey);
+        localStorage.setItem('ecdsa_private_key', privateKey);
+        console.log('New private key generated and saved.');
+      } else {
+        console.log('Private key already exists.');
+      }
+
+      localStorage.setItem('username', result.user.username);
+      localStorage.setItem('user_id', result.user.id);
+
+      goto('/');
+    } catch (err: any) {
+      error = err?.message || 'Login failed.';
+    } finally {
+      loading = false;
     }
   }
 </script>
 
-<style>
-  form {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-  }
-</style>
-
-<form on:submit|preventDefault={handleSubmit}>
+<form on:submit={handleLogin}>
   <div>
     <label for="username">Username</label>
-    <input id="username" bind:value={username} required />
+    <input id="username" bind:value={username} required minlength="3" maxlength="30" />
   </div>
 
   <div>
     <label for="password">Password</label>
-    <input id="password" type="password" bind:value={password} required />
+    <input id="password" type="password" bind:value={password} required minlength="8" maxlength="100" />
   </div>
 
   {#if error}

@@ -2,7 +2,6 @@ import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import bcrypt from 'bcryptjs';
-import { deriveEcdsaKeyPair } from '$lib/keyDerivation';
 
 export const POST: RequestHandler = async ({ request }) => {
   const { username, password } = await request.json();
@@ -30,21 +29,6 @@ export const POST: RequestHandler = async ({ request }) => {
     return json(
       { error: 'Invalid username or password.' },
       { status: 401 }
-    );
-  }
-
-  if (typeof localStorage !== 'undefined') {
-    const storedPrivateKey = localStorage.getItem('ecdsa_private_key');
-
-    if (!storedPrivateKey) {
-      const keyPair = await deriveEcdsaKeyPair(username, password);
-      const privateKey = keyPair.privateKey;
-      localStorage.setItem('ecdsa_private_key', JSON.stringify(privateKey));
-    }
-  } else {
-    return json(
-      { error: 'Local storage is not available.' },
-      { status: 500 }
     );
   }
 

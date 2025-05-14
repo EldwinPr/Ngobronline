@@ -38,14 +38,8 @@ export const POST: RequestHandler = async ({ request }) => {
       data: {
         username,
         hashedPassword,
-        publicKeys: {
-          create: [
-            {
-              key: publicKeyString,
-            },
-          ],
-        },
-      },
+        activePublicKey: publicKeyString
+      }
     });
 
     return json(
