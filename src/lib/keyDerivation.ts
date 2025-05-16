@@ -1,4 +1,4 @@
-import * as secp256k1 from '@noble/secp256k1';
+import { secp256k1 } from './crypto/secp256k1-setup';
 
 // Convert string to Uint8Array
 function stringToBytes(str: string): Uint8Array {
