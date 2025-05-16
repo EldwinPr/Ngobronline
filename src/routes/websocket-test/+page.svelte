@@ -1,119 +1,99 @@
-<!-- src/routes/ws-test/+page.svelte -->
+<!-- src/routes/websocket-test/+page.svelte -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   
-  let messages: string[] = [];
-  let inputText = '';
+  let status = 'Disconnected';
+  let messages: Array<{text: string}> = [];
   let socket: WebSocket | null = null;
-  let connected = false;
+  let inputMessage = '';
   
-  function addMessage(text: string) {
-    messages = [...messages, text];
-  }
-  
-  function connectWebSocket() {
+  function connect(): void {
+    // Connect to our standalone WebSocket server
     socket = new WebSocket('ws://localhost:3001');
     
     socket.onopen = () => {
-      connected = true;
-      addMessage('Connected to server');
+      status = 'Connected';
+      messages = [...messages, { text: 'Connected to WebSocket server' }];
     };
     
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        addMessage(`Server: ${data.message}`);
-      } catch (e) {
-        addMessage(`Raw message: ${event.data}`);
+        messages = [...messages, { text: data.message }];
+      } catch (error) {
+        messages = [...messages, { text: 'Failed to parse message' }];
       }
     };
     
     socket.onclose = () => {
-      connected = false;
-      addMessage('Disconnected from server');
+      status = 'Disconnected';
+      messages = [...messages, { text: 'Disconnected from server' }];
       socket = null;
     };
     
     socket.onerror = () => {
-      addMessage('WebSocket error occurred');
+      status = 'Error';
+      messages = [...messages, { text: 'WebSocket error' }];
     };
   }
   
-  function disconnectWebSocket() {
+  function disconnect(): void {
     if (socket) {
       socket.close();
     }
   }
   
-  function handleSendMessage() {
-    if (socket && connected && inputText.trim()) {
-      // Send as plain text
-      socket.send(inputText);
-      addMessage(`You: ${inputText}`);
-      inputText = '';
+  function sendMessage(): void {
+    if (socket && socket.readyState === WebSocket.OPEN && inputMessage.trim()) {
+      socket.send(inputMessage);
+      messages = [...messages, { text: `Sent: ${inputMessage}` }];
+      inputMessage = '';
     }
   }
   
   onMount(() => {
-    connectWebSocket();
+    connect();
   });
   
   onDestroy(() => {
-    disconnectWebSocket();
+    disconnect();
   });
 </script>
 
-<main>
+<div>
   <h1>WebSocket Test</h1>
   
-  <div class="status">
-    <p>Status: {connected ? 'Connected' : 'Disconnected'}</p>
-    <button on:click={connectWebSocket} disabled={connected}>Connect</button>
-    <button on:click={disconnectWebSocket} disabled={!connected}>Disconnect</button>
+  <div>
+    <p>Status: {status}</p>
+    
+    <div>
+      <button on:click={connect} disabled={!!socket && socket.readyState !== WebSocket.CLOSED}>
+        Connect
+      </button>
+      <button on:click={disconnect} disabled={!socket || socket.readyState !== WebSocket.OPEN}>
+        Disconnect
+      </button>
+    </div>
   </div>
   
-  <div class="message-container">
+  <div style="border: 1px solid #ccc; height: 200px; overflow-y: auto; margin: 10px 0; padding: 10px;">
     {#each messages as message}
-      <div class="message">{message}</div>
+      <div>{message.text}</div>
     {/each}
   </div>
   
-  <div class="input-area">
+  <div>
     <input 
       type="text" 
-      bind:value={inputText} 
+      bind:value={inputMessage} 
       placeholder="Type a message..." 
-      disabled={!connected}
+      disabled={!socket || socket.readyState !== WebSocket.OPEN} 
     />
     <button 
-      on:click={handleSendMessage} 
-      disabled={!connected || !inputText.trim()}
+      on:click={sendMessage} 
+      disabled={!socket || socket.readyState !== WebSocket.OPEN || !inputMessage.trim()}
     >
       Send
     </button>
   </div>
-</main>
-
-<style>
-  .message-container {
-    height: 300px;
-    overflow-y: auto;
-    border: 1px solid #ccc;
-    padding: 10px;
-    margin: 10px 0;
-  }
-  
-  .message {
-    margin: 5px 0;
-  }
-  
-  .input-area {
-    display: flex;
-    gap: 10px;
-  }
-  
-  input {
-    flex-grow: 1;
-    padding: 5px;
-  }
-</style>
+</div>
