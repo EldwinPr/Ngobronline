@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { generateKeyPair } from '$lib/keyDerivation';
+  import { generateKeyPair } from '$lib/chat/keyDerivation';
 
   let username = '';
   let password = '';

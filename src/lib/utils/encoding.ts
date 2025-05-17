@@ -1,8 +1,3 @@
-/**
- * Utility functions for encoding/decoding between different formats
- */
-
-// Convert string to Uint8Array
 export function stringToBytes(str: string): Uint8Array {
   return new TextEncoder().encode(str);
 }
