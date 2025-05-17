@@ -1,10 +1,10 @@
-<!-- routes/chat/+page.svelte -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { createSignedMessage } from '$lib/chat/messageSigningFunctions';
   import { WebSocketService } from '$lib/chat/websocketService';
+  import { ChatLocalStorageService } from '$lib/chat/localStorageService';
   import type { Message, SignedMessage, VerificationStatus } from '$lib/chat/types';
   
   // State variables
@@ -17,6 +17,7 @@
   let loadingUsername = true;
   let selectedMessage: (Message & { id?: string }) | null = null;
   let showVerificationDetails = false;
+  let autoSaveEnabled = true; // Flag to control automatic saving
   
   // Handle connection status changes
   function handleConnectionStatus(status: string) {
@@ -26,16 +27,76 @@
   // Handle new messages
   function handleNewMessage(message: Message & { id?: string }) {
     messages = [...messages, message];
+    
+    // Save messages when a new one is added
+    if (autoSaveEnabled && browser && username && recipientUsername) {
+      saveCurrentConversation();
+    }
   }
   
   // Handle verification status updates
   function handleVerificationUpdate(messageId: string, status: VerificationStatus, isValid?: boolean) {
     messages = messages.map(msg => {
       if (msg.id === messageId) {
-        return { ...msg, verificationStatus: status };
+        const updatedMsg = { ...msg, verificationStatus: status };
+        return updatedMsg;
       }
       return msg;
     });
+    
+    // Save messages after verification updates
+    if (autoSaveEnabled && browser && username && recipientUsername) {
+      saveCurrentConversation();
+    }
+  }
+  
+  // Save the current conversation to local storage
+  function saveCurrentConversation() {
+    if (!browser || !username || !recipientUsername || !messages.length) return;
+    ChatLocalStorageService.saveMessages(username, recipientUsername, messages);
+  }
+  
+  // Load conversation with a specific recipient
+  function loadConversation(recipient: string) {
+    if (!browser || !username || !recipient) return [];
+    
+    // Save current conversation first if applicable
+    if (recipientUsername && messages.length) {
+      saveCurrentConversation();
+    }
+    
+    // Update recipient
+    recipientUsername = recipient;
+    
+    // Load messages for this recipient
+    const loadedMessages = ChatLocalStorageService.loadMessages(username, recipient);
+    messages = loadedMessages;
+    
+    // Re-verify all loaded messages that need verification
+    verifyLoadedMessages(loadedMessages);
+    
+    return loadedMessages;
+  }
+  
+  // Verify all loaded messages that have signatures
+  function verifyLoadedMessages(loadedMessages: (Message & { id?: string })[]) {
+    if (!websocketService) return;
+    
+    // Temporarily disable auto-save to prevent excessive saves during verification
+    autoSaveEnabled = false;
+    
+    for (const msg of loadedMessages) {
+      if (msg.type === 'received' && msg.signedMessage && msg.id) {
+        // Use the special method for verifying loaded messages
+        websocketService.verifyLoadedMessage(msg.id, msg.signedMessage);
+      }
+    }
+    
+    // Re-enable auto-save after a short delay
+    setTimeout(() => {
+      autoSaveEnabled = true;
+      saveCurrentConversation(); // Save once after all verifications
+    }, 500);
   }
   
   // Send a signed message
@@ -47,6 +108,8 @@
       
       // Clear input after successful send
       messageText = '';
+      
+      // Messages will be saved via the handleNewMessage callback
     } catch (error) {
       console.error('Error sending signed message:', error);
       messages = [...messages, {
@@ -58,6 +121,9 @@
         }`,
         timestamp: new Date().toLocaleTimeString()
       }];
+      
+      // Save after adding error message
+      saveCurrentConversation();
     }
   }
   
@@ -86,6 +152,14 @@
   function closeDetails() {
     showVerificationDetails = false;
     selectedMessage = null;
+  }
+  
+  // Change current recipient
+  function changeRecipient(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (input.value !== recipientUsername) {
+      loadConversation(input.value);
+    }
   }
   
   // Format JSON for display
@@ -118,9 +192,20 @@
   // Logout function
   function logout(): void {
     if (browser) {
+      // Save any current messages before logout
+      if (username && recipientUsername && messages.length) {
+        saveCurrentConversation();
+      }
+      
       localStorage.removeItem('username');
       goto('/login');
     }
+  }
+  
+  // Load recent conversation partners
+  function loadRecentPartners(): string[] {
+    if (!browser || !username) return [];
+    return ChatLocalStorageService.getConversationPartners(username);
   }
   
   // Setup on component mount
@@ -144,11 +229,21 @@
       
       // Connect to WebSocket server
       websocketService.connect(username);
+      
+      // If there's a recipient in URL params or state, load that conversation
+      if (recipientUsername) {
+        loadConversation(recipientUsername);
+      }
     }
   });
   
   // Clean up on component destroy
   onDestroy(() => {
+    // Save current conversation before unmounting
+    if (browser && username && recipientUsername && messages.length) {
+      saveCurrentConversation();
+    }
+    
     if (websocketService) {
       websocketService.disconnect();
     }
@@ -181,7 +276,20 @@
           type="text" 
           bind:value={recipientUsername} 
           placeholder="Recipient username"
+          on:change={changeRecipient}
         />
+        
+        <!-- Recent conversations dropdown -->
+        {#if loadRecentPartners().length > 0}
+          <div class="recent-partners">
+            <select on:change={(e) => loadConversation((e.target as HTMLSelectElement).value)}>
+              <option value="">Recent conversations</option>
+              {#each loadRecentPartners() as partner}
+                <option value={partner}>{partner}</option>
+              {/each}
+            </select>
+          </div>
+        {/if}
       </div>
       
       <div class="message-container">
@@ -515,4 +623,17 @@
     cursor: pointer;
     font-weight: bold;
   }
+
+    .recent-partners {
+    margin-top: 5px;
+  }
+  
+  .recent-partners select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: #f9f9f9;
+  }
+
 </style>

@@ -218,6 +218,41 @@ connect(username: string): void {
       throw error;
     }
   }
+
+  public verifyLoadedMessage(messageId: string, signedMessage: SignedMessage): void {
+    // Try to use the connection if available
+    if (this.connected && this.userIdentified) {
+      this.verifyMessage(messageId, signedMessage);
+      return;
+    }
+    
+    // Otherwise, perform offline verification
+    this.performOfflineVerification(messageId, signedMessage);
+  }
+
+  /**
+   * Perform verification without an active WebSocket connection
+   */
+  private async performOfflineVerification(messageId: string, signedMessage: SignedMessage): Promise<void> {
+    try {
+      // Update status to verifying
+      this.verificationUpdateCallback(messageId, 'verifying');
+      
+      // Import the verification function
+      const { verifySignedMessage } = await import('./verifyMessage');
+      
+      // Perform the verification
+      const isValid = await verifySignedMessage(signedMessage);
+      
+      // Update status based on the result
+      const status: VerificationStatus = isValid ? 'verified' : 'failed';
+      this.verificationUpdateCallback(messageId, status, isValid);
+      
+    } catch (error) {
+      console.error('Offline verification error:', error);
+      this.verificationUpdateCallback(messageId, 'failed', false);
+    }
+  }
   
   /**
    * Disconnect from the WebSocket server
