@@ -48,20 +48,20 @@
 ## Phase 3: Real-time Chat & Security Implementation
 
 12. Set up WebSocket Server
-    - [ ] Integrate `ws` library for real-time communication
+    - [x] Integrate `ws` library for real-time communication
 
 13. Set up WebSocket Client + UI
-    - [ ] Establish WebSocket connection on client-side
-    - [ ] Make simple GUI for chat
+    - [x] Establish WebSocket connection on client-side
+    - [x] Make simple GUI for chat
 
 14. Implement Client-Side Message Sending
-    - [ ] Sign and send messages using ECDSA keys
+    - [x] Sign and send messages using ECDSA keys
 
 15. Implement Server-Side Message Handling
     - [ ] Store and forward messages to recipients
 
 16. Implement Client-Side Message Receiving
-    - [ ] Verify received messages and display status
+    - [x] Verify received messages and display status
 
 ## Phase 4: UI & Refinement
 

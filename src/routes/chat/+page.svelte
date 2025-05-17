@@ -7,6 +7,7 @@
   import { ChatLocalStorageService } from '$lib/chat/localStorageService';
   import { clearPublicKeyCache } from '$lib/chat/verifyMessage';
   import type { Message, SignedMessage, VerificationStatus } from '$lib/chat/types';
+  import ContactList from '../../components/contactList.svelte';
   
   // State variables
   let websocketService: WebSocketService | null = null;
@@ -19,6 +20,7 @@
   let selectedMessage: (Message & { id?: string }) | null = null;
   let showVerificationDetails = false;
   let autoSaveEnabled = true;
+  let showContacts = true;
   
   // Handle connection status changes
   function handleConnectionStatus(status: string) {
@@ -74,6 +76,11 @@
     // Update recipient
     recipientUsername = recipient;
     
+    // Hide contacts list when a conversation is selected on mobile
+    if (window.innerWidth < 768) {
+      showContacts = false;
+    }
+    
     // Load messages for this recipient
     const loadedMessages = ChatLocalStorageService.loadMessages(username, recipient);
     
@@ -83,6 +90,13 @@
     verifyLoadedMessages(loadedMessages);
     
     return loadedMessages;
+  }
+  
+  // Handle contact selection
+  function handleSelectContact(selectedUsername: string) {
+    if (selectedUsername !== recipientUsername) {
+      loadConversation(selectedUsername);
+    }
   }
   
   // Verify all loaded messages that have signatures
@@ -171,12 +185,9 @@
     selectedMessage = null;
   }
   
-  // Change current recipient
-  function changeRecipient(event: Event) {
-    const input = event.target as HTMLInputElement;
-    if (input.value !== recipientUsername) {
-      loadConversation(input.value);
-    }
+  // Toggle contacts list on mobile
+  function toggleContacts() {
+    showContacts = !showContacts;
   }
   
   // Format JSON for display
@@ -217,12 +228,6 @@
       localStorage.removeItem('username');
       goto('/login');
     }
-  }
-  
-  // Load recent conversation partners
-  function loadRecentPartners(): string[] {
-    if (!browser || !username) return [];
-    return ChatLocalStorageService.getConversationPartners(username);
   }
   
   // Setup on component mount
@@ -279,11 +284,21 @@
   });
 </script>
 
-<div class="max-w-2xl mx-auto p-4 font-sans">
+<div class="max-w-5xl mx-auto p-4 font-sans">
   <header class="mb-4">
-    <h1 class="text-xl font-bold mb-2">Secure Chat</h1>
-    <div class="text-gray-600 text-sm flex items-center gap-2">
-      <span>Status: {connectionStatus}</span>
+    <div class="flex justify-between items-center">
+      <h1 class="text-xl font-bold">Secure Chat</h1>
+      
+      <div class="flex items-center gap-2">
+        <span class="text-sm text-gray-600">Status: {connectionStatus}</span>
+        <span class="text-sm text-gray-600">User: {username}</span>
+        <button 
+          class="px-2 py-1 bg-gray-100 border border-gray-300 rounded text-sm"
+          on:click={logout}
+        >
+          Logout
+        </button>
+      </div>
     </div>
   </header>
   
@@ -294,102 +309,124 @@
       <p>Not logged in. Redirecting to login page...</p>
     </div>
   {:else}
-    <div class="flex flex-col gap-3">
-      <div class="flex justify-between items-center">
-        <span>Connected as: <strong>{username}</strong></span>
-        <button 
-          class="px-2 py-1 bg-gray-100 border border-gray-300 rounded text-sm"
-          on:click={logout}
-        >
-          Logout
-        </button>
-      </div>
-      
-      <div>
-        <input 
-          type="text" 
-          bind:value={recipientUsername} 
-          placeholder="Recipient username"
-          on:change={changeRecipient}
-          class="w-full p-2 border border-gray-300 rounded mb-2"
+    <!-- Mobile contacts toggle button -->
+    <div class="md:hidden mb-3">
+      <button 
+        class="w-full py-2 bg-blue-600 text-white font-medium rounded"
+        on:click={toggleContacts}
+      >
+        {showContacts ? 'Hide Contacts' : 'Show Contacts'}
+      </button>
+    </div>
+    
+    <div class="flex flex-col md:flex-row gap-4">
+      <!-- Contacts List - hidden on mobile when showContacts is false -->
+      <div class={`${showContacts ? 'block' : 'hidden'} md:block md:w-1/3 bg-white p-3 rounded border`}>
+        <ContactList 
+          currentUsername={username}
+          onSelectContact={handleSelectContact}
         />
-        
-        {#if loadRecentPartners().length > 0}
-          <select 
-            on:change={(e) => loadConversation((e.target as HTMLSelectElement).value)}
-            class="w-full p-2 border border-gray-300 rounded bg-gray-50"
-          >
-            <option value="">Recent conversations</option>
-            {#each loadRecentPartners() as partner}
-              <option value={partner}>{partner}</option>
-            {/each}
-          </select>
-        {/if}
       </div>
       
-      <div class="border border-gray-200 rounded h-64 overflow-y-auto p-2 bg-gray-50">
-        {#each messages as msg}
-          <div class="mb-2">
-            {#if msg.type === 'system'}
-              <div class="text-gray-600 text-sm">
-                [{msg.timestamp}] SYSTEM: {msg.content}
+      <!-- Chat Area - full width on mobile, 2/3 on larger screens -->
+      <div class={`${showContacts ? 'hidden' : 'block'} md:block md:w-2/3 flex flex-col gap-3`}>
+        {#if recipientUsername}
+          <div class="bg-white p-3 rounded border flex justify-between items-center">
+            <div>
+              <h2 class="font-medium">Chat with: {recipientUsername}</h2>
+            </div>
+            
+            <!-- Show contacts button on mobile -->
+            <button 
+              class="md:hidden px-2 py-1 bg-gray-100 border border-gray-300 rounded text-sm"
+              on:click={toggleContacts}
+            >
+              Back to Contacts
+            </button>
+          </div>
+          
+          <div class="border border-gray-200 rounded h-96 overflow-y-auto p-3 bg-gray-50">
+            {#each messages as msg}
+              <div class="mb-3">
+                {#if msg.type === 'system'}
+                  <div class="text-gray-600 text-sm p-2 bg-gray-100 rounded">
+                    [{msg.timestamp}] SYSTEM: {msg.content}
+                  </div>
+                {:else if msg.type === 'error'}
+                  <div class="text-red-600 text-sm p-2 bg-red-50 rounded">
+                    [{msg.timestamp}] ERROR: {msg.content}
+                  </div>
+                {:else if msg.type === 'sent'}
+                  <div class="flex justify-end">
+                    <div class="text-white text-sm p-3 bg-blue-600 rounded-lg max-w-xs">
+                      <div class="text-xs text-blue-200 mb-1">
+                        Sent at {msg.timestamp}
+                      </div>
+                      <div>{msg.content}</div>
+                    </div>
+                  </div>
+                {:else if msg.type === 'received'}
+                  <div class="flex justify-start">
+                    <div class="text-sm p-3 bg-gray-100 rounded-lg max-w-xs">
+                      <div class="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                        <span>From {msg.from} at {msg.timestamp}</span>
+                        {#if msg.verificationStatus}
+                          <span 
+                            class={`font-bold ${getVerificationColor(msg.verificationStatus)}`}
+                            title="Verification: {msg.verificationStatus}"
+                          >
+                            {getVerificationIcon(msg.verificationStatus)}
+                          </span>
+                          <button 
+                            class="text-xs bg-gray-200 px-1 rounded" 
+                            on:click={() => reverifyMessage(msg)}
+                            title="Reverify message"
+                          >↺</button>
+                          <button 
+                            class="text-xs bg-gray-200 px-1 rounded" 
+                            on:click={() => showDetails(msg)}
+                            title="Message details"
+                          >ℹ</button>
+                        {/if}
+                      </div>
+                      <div>{msg.content}</div>
+                    </div>
+                  </div>
+                {:else if msg.type === 'delivered'}
+                  <div class="text-amber-600 text-xs italic text-center my-1">
+                    {msg.content}
+                  </div>
+                {/if}
               </div>
-            {:else if msg.type === 'error'}
-              <div class="text-red-600 text-sm">
-                [{msg.timestamp}] ERROR: {msg.content}
-              </div>
-            {:else if msg.type === 'sent'}
-              <div class="text-blue-600 text-sm">
-                [{msg.timestamp}] TO {msg.to}: {msg.content}
-              </div>
-            {:else if msg.type === 'received'}
-              <div class="text-green-700 text-sm">
-                <div class="flex items-center gap-1">
-                  <span>[{msg.timestamp}] FROM {msg.from}:</span>
-                  
-                  {#if msg.verificationStatus}
-                    <span 
-                      class={`font-bold ${getVerificationColor(msg.verificationStatus)}`}
-                      title="Verification: {msg.verificationStatus}"
-                    >
-                      {getVerificationIcon(msg.verificationStatus)}
-                    </span>
-                    <button 
-                      class="text-xs bg-gray-200 px-1 rounded" 
-                      on:click={() => reverifyMessage(msg)}
-                    >↺</button>
-                    <button 
-                      class="text-xs bg-gray-200 px-1 rounded" 
-                      on:click={() => showDetails(msg)}
-                    >ℹ</button>
-                  {/if}
-                </div>
-                <div class="mt-1">{msg.content}</div>
-              </div>
-            {:else if msg.type === 'delivered'}
-              <div class="text-amber-600 text-sm italic">
-                [{msg.timestamp}] {msg.content}
+            {/each}
+            {#if messages.length === 0}
+              <div class="text-center py-10 text-gray-500">
+                No messages yet. Start the conversation!
               </div>
             {/if}
           </div>
-        {/each}
-      </div>
-      
-      <div class="flex flex-col gap-2">
-        <textarea 
-          bind:value={messageText} 
-          placeholder="Type your message..." 
-          on:keydown={handleKeydown}
-          rows="3"
-          class="w-full p-2 border border-gray-300 rounded resize-y"
-        ></textarea>
-        <button 
-          on:click={sendSignedMessage} 
-          disabled={!messageText || !recipientUsername}
-          class="py-2 bg-blue-600 text-white font-medium rounded disabled:bg-gray-400 disabled:cursor-not-allowed"
-        >
-          Send Message
-        </button>
+          
+          <div class="flex flex-col gap-2">
+            <textarea 
+              bind:value={messageText} 
+              placeholder="Type your message..." 
+              on:keydown={handleKeydown}
+              rows="3"
+              class="w-full p-3 border border-gray-300 rounded resize-y"
+            ></textarea>
+            <button 
+              on:click={sendSignedMessage} 
+              disabled={!messageText || !recipientUsername}
+              class="py-2 bg-blue-600 text-white font-medium rounded disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              Send Message
+            </button>
+          </div>
+        {:else}
+          <div class="border border-gray-200 rounded p-10 text-center text-gray-500">
+            <p>Select a contact from the list to start chatting</p>
+          </div>
+        {/if}
       </div>
     </div>
   {/if}
