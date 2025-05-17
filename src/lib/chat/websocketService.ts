@@ -20,45 +20,61 @@ export class WebSocketService {
     this.verificationUpdateCallback = verificationUpdateCallback;
   }
   
-connect(username: string): void {
-  if (!username) return;
-  
-  this.username = username;
-  
-  // Debug logging
-  console.log('Environment:', import.meta.env.PROD ? 'Production' : 'Development');
-  console.log('WebSocket URL env variable:', import.meta.env.VITE_WEBSOCKET_URL);
-  
-  // Determine WebSocket URL
-  let wsUrl = 'ws://wss://ngobronline-production.up.railway.app';
-  if (typeof window !== 'undefined' && window.location.host.includes('vercel.app')) {
-    wsUrl = `wss://ngobronline-production.up.railway.app`;
-    console.log('Using production WebSocket URL:', wsUrl);
-  }
-  
-  console.log('Connecting to WebSocket server at:', wsUrl);
-  this.ws = new WebSocket(wsUrl);
+  connect(username: string): void {
+    if (!username) return;
     
-    this.ws.onopen = () => {
-      this.connected = true;
-      this.connectionStatusCallback('Connected to server');
-      this.identifyUser();
-    };
+    this.username = username;
     
-    this.ws.onclose = () => {
-      this.connected = false;
-      this.userIdentified = false;
-      this.connectionStatusCallback('Disconnected');
+    // Debug logging
+    console.log('Environment:', import.meta.env.PROD ? 'Production' : 'Development');
+    console.log('WebSocket URL env variable:', import.meta.env.VITE_WEBSOCKET_URL);
+    
+    // Use localhost for development
+    let wsUrl = '';
+    
+    // Check if we're in a development environment
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      wsUrl = 'ws://localhost:3001';
+      console.log('Using development WebSocket URL:', wsUrl);
+    } else if (typeof window !== 'undefined' && window.location.host.includes('vercel.app')) {
+      // Production deployment on Vercel
+      wsUrl = 'wss://ngobronline-production.up.railway.app';
+      console.log('Using production WebSocket URL:', wsUrl);
+    } else {
+      // Default fallback
+      wsUrl = 'ws://localhost:3001';
+      console.log('Using default WebSocket URL:', wsUrl);
+    }
+    
+    console.log('Connecting to WebSocket server at:', wsUrl);
+    try {
+      this.ws = new WebSocket(wsUrl);
       
-      // Attempt to reconnect after a delay
-      setTimeout(() => this.connect(this.username), 3000);
-    };
-    
-    this.ws.onerror = () => {
-      this.connectionStatusCallback('Connection error');
-    };
-    
-    this.ws.onmessage = this.handleMessage.bind(this);
+      this.ws.onopen = () => {
+        this.connected = true;
+        this.connectionStatusCallback('Connected to server');
+        this.identifyUser();
+      };
+      
+      this.ws.onclose = () => {
+        this.connected = false;
+        this.userIdentified = false;
+        this.connectionStatusCallback('Disconnected');
+        
+        // Attempt to reconnect after a delay
+        setTimeout(() => this.connect(this.username), 3000);
+      };
+      
+      this.ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        this.connectionStatusCallback('Connection error');
+      };
+      
+      this.ws.onmessage = this.handleMessage.bind(this);
+    } catch (error) {
+      console.error('Failed to create WebSocket connection:', error);
+      this.connectionStatusCallback('Failed to connect');
+    }
   }
   
   /**

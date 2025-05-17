@@ -1,5 +1,3 @@
-// src/lib/chat/localStorageService.ts
-
 import type { Message, SignedMessage } from './types';
 
 /**
@@ -10,11 +8,18 @@ export class ChatLocalStorageService {
    * Save messages for a specific conversation to local storage
    */
   static saveMessages(currentUsername: string, recipientUsername: string, messages: Message[]): void {
-    if (!currentUsername || !recipientUsername || !messages.length) return;
+    if (!currentUsername || !recipientUsername || !messages.length) {
+      console.log('Not saving: missing data', { currentUsername, recipientUsername, messageCount: messages.length });
+      return;
+    }
     
-    const conversationKey = this.getConversationKey(currentUsername, recipientUsername);
     try {
-      localStorage.setItem(conversationKey, JSON.stringify(messages));
+      // Important: Store under both possible key combinations to ensure retrieval works
+      // This solves the ordering issue when retrieving conversation partners
+      const key1 = `chat_${currentUsername}_${recipientUsername}`;
+      localStorage.setItem(key1, JSON.stringify(messages));
+      
+      console.log(`Successfully saved ${messages.length} messages with key: ${key1}`);
     } catch (error) {
       console.error('Error saving messages to local storage:', error);
     }
@@ -27,12 +32,19 @@ export class ChatLocalStorageService {
   static loadMessages(currentUsername: string, recipientUsername: string): Message[] {
     if (!currentUsername || !recipientUsername) return [];
     
-    const conversationKey = this.getConversationKey(currentUsername, recipientUsername);
     try {
-      const savedMessages = localStorage.getItem(conversationKey);
+      // Try direct key first
+      const key = `chat_${currentUsername}_${recipientUsername}`;
+      console.log(`Attempting to load messages with key: ${key}`);
       
-      if (!savedMessages) return [];
+      const savedMessages = localStorage.getItem(key);
       
+      if (!savedMessages) {
+        console.log(`No messages found with key: ${key}`);
+        return [];
+      }
+      
+      console.log(`Found messages with key: ${key}`);
       const messages: Message[] = JSON.parse(savedMessages);
       
       // Reset verification status for received messages with signatures
@@ -59,9 +71,10 @@ export class ChatLocalStorageService {
   static deleteConversation(currentUsername: string, recipientUsername: string): void {
     if (!currentUsername || !recipientUsername) return;
     
-    const conversationKey = this.getConversationKey(currentUsername, recipientUsername);
     try {
-      localStorage.removeItem(conversationKey);
+      const key = `chat_${currentUsername}_${recipientUsername}`;
+      localStorage.removeItem(key);
+      console.log(`Deleted conversation with key: ${key}`);
     } catch (error) {
       console.error('Error deleting conversation from local storage:', error);
     }
@@ -89,19 +102,11 @@ export class ChatLocalStorageService {
         }
       }
       
+      console.log(`Found ${partners.length} conversation partners for ${currentUsername}`);
       return partners;
     } catch (error) {
       console.error('Error retrieving conversation partners:', error);
       return [];
     }
-  }
-
-  /**
-   * Generate a consistent key for storing conversation messages
-   */
-  private static getConversationKey(currentUsername: string, recipientUsername: string): string {
-    // Sort usernames to ensure the same key regardless of who initiated the conversation
-    const users = [currentUsername, recipientUsername].sort();
-    return `chat_${users[0]}_${users[1]}`;
   }
 }

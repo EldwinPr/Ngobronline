@@ -18,6 +18,7 @@
   let selectedMessage: (Message & { id?: string }) | null = null;
   let showVerificationDetails = false;
   let autoSaveEnabled = true; // Flag to control automatic saving
+  let debugMode = false; // Toggle for debugging info
   
   // Handle connection status changes
   function handleConnectionStatus(status: string) {
@@ -52,16 +53,31 @@
   
   // Save the current conversation to local storage
   function saveCurrentConversation() {
-    if (!browser || !username || !recipientUsername || !messages.length) return;
+    if (!browser || !username || !recipientUsername || !messages.length) {
+      if (debugMode) console.log("Not saving - missing data:", { browser, username, recipientUsername, messagesLength: messages.length });
+      return;
+    }
+    
+    if (debugMode) console.log(`Saving conversation with ${recipientUsername}, ${messages.length} messages`);
     ChatLocalStorageService.saveMessages(username, recipientUsername, messages);
+    
+    // Verify that messages were saved correctly
+    if (debugMode) {
+      const testLoad = ChatLocalStorageService.loadMessages(username, recipientUsername);
+      console.log(`Verification - loaded ${testLoad.length} messages after save`);
+    }
   }
   
   // Load conversation with a specific recipient
   function loadConversation(recipient: string) {
-    if (!browser || !username || !recipient) return [];
+    if (!browser || !username || !recipient) {
+      if (debugMode) console.log("Cannot load conversation - missing data:", { browser, username, recipient });
+      return [];
+    }
     
     // Save current conversation first if applicable
     if (recipientUsername && messages.length) {
+      if (debugMode) console.log(`Saving current conversation with ${recipientUsername} before switching`);
       saveCurrentConversation();
     }
     
@@ -69,7 +85,10 @@
     recipientUsername = recipient;
     
     // Load messages for this recipient
+    if (debugMode) console.log(`Loading conversation with ${recipient}`);
     const loadedMessages = ChatLocalStorageService.loadMessages(username, recipient);
+    if (debugMode) console.log(`Loaded ${loadedMessages.length} messages with ${recipient}`);
+    
     messages = loadedMessages;
     
     // Re-verify all loaded messages that need verification
@@ -82,20 +101,30 @@
   function verifyLoadedMessages(loadedMessages: (Message & { id?: string })[]) {
     if (!websocketService) return;
     
+    if (debugMode) console.log("Starting verification of loaded messages");
+    
     // Temporarily disable auto-save to prevent excessive saves during verification
     autoSaveEnabled = false;
     
-    for (const msg of loadedMessages) {
-      if (msg.type === 'received' && msg.signedMessage && msg.id) {
-        // Use the special method for verifying loaded messages
-        websocketService.verifyLoadedMessage(msg.id, msg.signedMessage);
+    // Add IDs to messages that don't have them (for older conversations)
+    loadedMessages.forEach(msg => {
+      if (msg.type === 'received' && msg.signedMessage) {
+        if (!msg.id) {
+          msg.id = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        }
+        
+        if (msg.id && websocketService) {
+          // Use the special method for verifying loaded messages
+          websocketService.verifyLoadedMessage(msg.id, msg.signedMessage);
+        }
       }
-    }
+    });
     
     // Re-enable auto-save after a short delay
     setTimeout(() => {
       autoSaveEnabled = true;
       saveCurrentConversation(); // Save once after all verifications
+      if (debugMode) console.log("Re-enabled auto-save and saved after verifications");
     }, 500);
   }
   
@@ -109,7 +138,10 @@
       // Clear input after successful send
       messageText = '';
       
-      // Messages will be saved via the handleNewMessage callback
+      // Manual save after sending to ensure the message is captured
+      if (browser && username && recipientUsername) {
+        setTimeout(() => saveCurrentConversation(), 100);
+      }
     } catch (error) {
       console.error('Error sending signed message:', error);
       messages = [...messages, {
@@ -181,11 +213,30 @@
   // Get verification status color
   function getVerificationColor(status?: VerificationStatus): string {
     switch (status) {
-      case 'verified': return 'green';
-      case 'failed': return 'red';
-      case 'verifying': return 'blue';
-      case 'pending': return 'gray';
-      default: return 'inherit';
+      case 'verified': return 'text-green-500';
+      case 'failed': return 'text-red-500';
+      case 'verifying': return 'text-blue-500';
+      case 'pending': return 'text-gray-500';
+      default: return '';
+    }
+  }
+  
+  // Toggle debug mode
+  function toggleDebugMode() {
+    debugMode = !debugMode;
+    if (debugMode) {
+      console.log("Debug mode enabled");
+      
+      // Show localStorage info
+      if (browser) {
+        console.log("LocalStorage contents:");
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('chat_')) {
+            console.log(`- ${key}: ${localStorage.getItem(key)?.length} chars`);
+          }
+        }
+      }
     }
   }
   
@@ -208,6 +259,12 @@
     return ChatLocalStorageService.getConversationPartners(username);
   }
   
+  // Force save current conversation
+  function forceSave() {
+    if (debugMode) console.log("Manually forcing save");
+    saveCurrentConversation();
+  }
+  
   // Setup on component mount
   onMount(() => {
     if (browser) {
@@ -219,6 +276,17 @@
       
       username = storedUsername;
       loadingUsername = false;
+      
+      // Check if there are any existing conversations
+      if (debugMode) {
+        console.log("Checking for existing conversations in localStorage");
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('chat_')) {
+            console.log(`- Found: ${key}`);
+          }
+        }
+      }
       
       // Initialize WebSocket service
       websocketService = new WebSocketService(
@@ -234,6 +302,13 @@
       if (recipientUsername) {
         loadConversation(recipientUsername);
       }
+      
+      // Set up beforeunload handler to save before page navigation
+      window.addEventListener('beforeunload', () => {
+        if (username && recipientUsername && messages.length) {
+          saveCurrentConversation();
+        }
+      });
     }
   });
   
@@ -241,93 +316,120 @@
   onDestroy(() => {
     // Save current conversation before unmounting
     if (browser && username && recipientUsername && messages.length) {
+      if (debugMode) console.log("Saving conversation on component destroy");
       saveCurrentConversation();
     }
     
     if (websocketService) {
       websocketService.disconnect();
     }
+    
+    // Remove the beforeunload handler
+    if (browser) {
+      window.removeEventListener('beforeunload', () => {});
+    }
   });
 </script>
 
-<div class="chat-container">
-  <header>
-    <h1>Secure Chat</h1>
-    <div class="status-bar">
+<div class="max-w-2xl mx-auto p-4 font-sans">
+  <header class="mb-4">
+    <h1 class="text-xl font-bold mb-2">Secure Chat</h1>
+    <div class="text-gray-600 text-sm flex items-center gap-2">
       <span>Status: {connectionStatus}</span>
+      <button class="text-base" on:click={toggleDebugMode}>🔍</button>
+      {#if debugMode}
+        <button class="text-base" on:click={forceSave}>💾</button>
+      {/if}
     </div>
   </header>
   
   {#if loadingUsername}
-    <div class="loading">Loading user information...</div>
+    <div class="text-center p-4 text-gray-600">Loading user information...</div>
   {:else if !username}
-    <div class="error-message">
+    <div class="text-red-500 p-4">
       <p>Not logged in. Redirecting to login page...</p>
     </div>
   {:else}
-    <div class="chat-app">
-      <div class="user-header">
+    <div class="flex flex-col gap-3">
+      <div class="flex justify-between items-center">
         <span>Connected as: <strong>{username}</strong></span>
-        <button class="logout-btn" on:click={logout}>Logout</button>
+        <button 
+          class="px-2 py-1 bg-gray-100 border border-gray-300 rounded text-sm"
+          on:click={logout}
+        >
+          Logout
+        </button>
       </div>
       
-      <div class="recipient-input">
+      <div>
         <input 
           type="text" 
           bind:value={recipientUsername} 
           placeholder="Recipient username"
           on:change={changeRecipient}
+          class="w-full p-2 border border-gray-300 rounded mb-2"
         />
         
-        <!-- Recent conversations dropdown -->
         {#if loadRecentPartners().length > 0}
-          <div class="recent-partners">
-            <select on:change={(e) => loadConversation((e.target as HTMLSelectElement).value)}>
-              <option value="">Recent conversations</option>
-              {#each loadRecentPartners() as partner}
-                <option value={partner}>{partner}</option>
-              {/each}
-            </select>
-          </div>
+          <select 
+            on:change={(e) => loadConversation((e.target as HTMLSelectElement).value)}
+            class="w-full p-2 border border-gray-300 rounded bg-gray-50"
+          >
+            <option value="">Recent conversations</option>
+            {#each loadRecentPartners() as partner}
+              <option value={partner}>{partner}</option>
+            {/each}
+          </select>
         {/if}
       </div>
       
-      <div class="message-container">
+      {#if debugMode}
+        <div class="bg-gray-100 p-2 rounded text-xs text-gray-600">
+          Debug: {messages.length} messages in memory, {loadRecentPartners().length} conversations
+        </div>
+      {/if}
+      
+      <div class="border border-gray-200 rounded h-64 overflow-y-auto p-2 bg-gray-50">
         {#each messages as msg}
-          <div class="message-item {msg.type}">
+          <div class="mb-2">
             {#if msg.type === 'system'}
-              <div class="system-message">
+              <div class="text-gray-600 text-sm">
                 [{msg.timestamp}] SYSTEM: {msg.content}
               </div>
             {:else if msg.type === 'error'}
-              <div class="error-message">
+              <div class="text-red-600 text-sm">
                 [{msg.timestamp}] ERROR: {msg.content}
               </div>
             {:else if msg.type === 'sent'}
-              <div class="sent-message">
+              <div class="text-blue-600 text-sm">
                 [{msg.timestamp}] TO {msg.to}: {msg.content}
               </div>
             {:else if msg.type === 'received'}
-              <div class="received-message">
-                <div class="message-header">
+              <div class="text-green-700 text-sm">
+                <div class="flex items-center gap-1">
                   <span>[{msg.timestamp}] FROM {msg.from}:</span>
                   
                   {#if msg.verificationStatus}
                     <span 
-                      class="verification-status"
-                      style="color: {getVerificationColor(msg.verificationStatus)};"
+                      class={`font-bold ${getVerificationColor(msg.verificationStatus)}`}
                       title="Verification: {msg.verificationStatus}"
                     >
                       {getVerificationIcon(msg.verificationStatus)}
                     </span>
-                    <button class="verify-btn" on:click={() => reverifyMessage(msg)}>↺</button>
-                    <button class="details-btn" on:click={() => showDetails(msg)}>ℹ</button>
+                    <button 
+                      class="text-xs bg-gray-200 px-1 rounded" 
+                      on:click={() => reverifyMessage(msg)}
+                    >↺</button>
+                    <button 
+                      class="text-xs bg-gray-200 px-1 rounded" 
+                      on:click={() => showDetails(msg)}
+                    >ℹ</button>
                   {/if}
                 </div>
-                <div class="message-content">{msg.content}</div>
+                <div class="mt-1">{msg.content}</div>
               </div>
             {:else if msg.type === 'delivered'}
-              <div class="delivered-message">
+              <div class="text-amber-600 text-sm italic">
                 [{msg.timestamp}] {msg.content}
               </div>
             {/if}
@@ -335,17 +437,18 @@
         {/each}
       </div>
       
-      <div class="input-area">
+      <div class="flex flex-col gap-2">
         <textarea 
           bind:value={messageText} 
           placeholder="Type your message..." 
           on:keydown={handleKeydown}
           rows="3"
+          class="w-full p-2 border border-gray-300 rounded resize-y"
         ></textarea>
         <button 
-          class="send-button" 
           on:click={sendSignedMessage} 
           disabled={!messageText || !recipientUsername}
+          class="py-2 bg-blue-600 text-white font-medium rounded disabled:bg-gray-400 disabled:cursor-not-allowed"
         >
           Send Message
         </button>
@@ -353,287 +456,48 @@
     </div>
   {/if}
   
-  <!-- Verification Details Modal -->
   {#if showVerificationDetails && selectedMessage}
-    <div class="modal-overlay">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>Message Verification Details</h3>
-          <button class="close-btn" on:click={closeDetails}>✕</button>
+    <div class="fixed inset-0 bg-black/50 flex justify-center items-center z-50">
+      <div class="bg-white rounded-lg w-11/12 max-w-lg max-h-[80vh] overflow-y-auto">
+        <div class="flex justify-between items-center p-4 border-b">
+          <h3 class="font-medium">Message Verification Details</h3>
+          <button class="text-lg" on:click={closeDetails}>✕</button>
         </div>
         
-        <div class="modal-body">
-          <div class="verification-info">
-            <h4>Status: 
-              <span style="color: {getVerificationColor(selectedMessage.verificationStatus)}">
-                {selectedMessage.verificationStatus}
-              </span>
-            </h4>
-            
-            <div class="message-details">
-              <div><strong>From:</strong> {selectedMessage.from}</div>
-              <div><strong>Message:</strong> {selectedMessage.content}</div>
-              <div><strong>Timestamp:</strong> {selectedMessage.timestamp}</div>
+        <div class="p-4">
+          <h4 class="font-medium">
+            Status: 
+            <span class={getVerificationColor(selectedMessage.verificationStatus)}>
+              {selectedMessage.verificationStatus}
+            </span>
+          </h4>
+          
+          <div class="my-3 p-2 bg-gray-100 rounded">
+            <div><strong>From:</strong> {selectedMessage.from}</div>
+            <div><strong>Message:</strong> {selectedMessage.content}</div>
+            <div><strong>Timestamp:</strong> {selectedMessage.timestamp}</div>
+          </div>
+          
+          {#if selectedMessage.signedMessage}
+            <div class="my-3">
+              <h4 class="font-medium">Signature Information:</h4>
+              <pre class="bg-gray-100 p-2 rounded overflow-x-auto text-xs">{formatJSON(selectedMessage.signedMessage.signature)}</pre>
+              
+              <h4 class="font-medium mt-3">Message Hash:</h4>
+              <pre class="bg-gray-100 p-2 rounded overflow-x-auto text-xs">{selectedMessage.signedMessage.message_hash}</pre>
             </div>
-            
-            {#if selectedMessage.signedMessage}
-              <div class="signature-details">
-                <h4>Signature Information:</h4>
-                <pre>{formatJSON(selectedMessage.signedMessage.signature)}</pre>
-                
-                <h4>Message Hash:</h4>
-                <pre>{selectedMessage.signedMessage.message_hash}</pre>
-              </div>
-            {/if}
-            
-            <div class="actions">
-              <button class="verify-btn-large" on:click={() => selectedMessage && reverifyMessage(selectedMessage)}>
-                Verify Again
-              </button>
-            </div>
+          {/if}
+          
+          <div class="flex justify-center mt-4">
+            <button 
+              class="px-4 py-2 bg-blue-600 text-white rounded" 
+              on:click={() => selectedMessage && reverifyMessage(selectedMessage)}
+            >
+              Verify Again
+            </button>
           </div>
         </div>
       </div>
     </div>
   {/if}
 </div>
-
-<style>
-  .chat-container {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 20px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  }
-  
-  header {
-    margin-bottom: 20px;
-  }
-  
-  h1 {
-    margin: 0 0 10px 0;
-  }
-  
-  .status-bar {
-    color: #666;
-    font-size: 14px;
-  }
-  
-  .user-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 15px;
-  }
-  
-  .logout-btn {
-    padding: 5px 10px;
-    background-color: #f0f0f0;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  
-  .recipient-input input {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    margin-bottom: 15px;
-  }
-  
-  .message-container {
-    border: 1px solid #eee;
-    border-radius: 4px;
-    height: 300px;
-    overflow-y: auto;
-    padding: 10px;
-    margin-bottom: 15px;
-    background-color: #f9f9f9;
-  }
-  
-  .message-item {
-    margin-bottom: 8px;
-    padding: 4px 0;
-  }
-  
-  .system-message {
-    color: #666;
-  }
-  
-  .error-message {
-    color: #d32f2f;
-  }
-  
-  .sent-message {
-    color: #1976d2;
-  }
-  
-  .received-message {
-    color: #2e7d32;
-  }
-  
-  .message-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  
-  .verification-status {
-    font-size: 16px;
-    font-weight: bold;
-  }
-  
-  .verify-btn, .details-btn {
-    border: none;
-    background: none;
-    cursor: pointer;
-    font-size: 12px;
-    padding: 2px 4px;
-    border-radius: 3px;
-    background-color: #f0f0f0;
-  }
-  
-  .message-content {
-    margin-top: 4px;
-  }
-  
-  .delivered-message {
-    color: #ed6c02;
-    font-style: italic;
-  }
-  
-  .input-area {
-    display: flex;
-    flex-direction: column;
-  }
-  
-  textarea {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    margin-bottom: 10px;
-    resize: vertical;
-  }
-  
-  .send-button {
-    padding: 10px;
-    background-color: #1976d2;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: bold;
-  }
-  
-  .send-button:disabled {
-    background-color: #cccccc;
-    cursor: not-allowed;
-  }
-  
-  .loading {
-    text-align: center;
-    padding: 20px;
-    color: #666;
-  }
-  
-  /* Modal styles */
-  .modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 100;
-  }
-  
-  .modal-content {
-    background-color: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-    width: 90%;
-    max-width: 600px;
-    max-height: 80vh;
-    overflow-y: auto;
-  }
-  
-  .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 15px 20px;
-    border-bottom: 1px solid #eee;
-  }
-  
-  .modal-header h3 {
-    margin: 0;
-  }
-  
-  .close-btn {
-    background: none;
-    border: none;
-    font-size: 18px;
-    cursor: pointer;
-  }
-  
-  .modal-body {
-    padding: 20px;
-  }
-  
-  .verification-info h4 {
-    margin-top: 0;
-  }
-  
-  .message-details {
-    margin: 15px 0;
-    padding: 10px;
-    background-color: #f5f5f5;
-    border-radius: 4px;
-  }
-  
-  .signature-details {
-    margin: 15px 0;
-  }
-  
-  .signature-details pre {
-    background-color: #f5f5f5;
-    padding: 10px;
-    border-radius: 4px;
-    overflow-x: auto;
-    font-size: 12px;
-  }
-  
-  .actions {
-    margin-top: 20px;
-    display: flex;
-    justify-content: center;
-  }
-  
-  .verify-btn-large {
-    padding: 8px 16px;
-    background-color: #1976d2;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: bold;
-  }
-
-    .recent-partners {
-    margin-top: 5px;
-  }
-  
-  .recent-partners select {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    background-color: #f9f9f9;
-  }
-
-</style>
