@@ -20,14 +20,24 @@ export class WebSocketService {
     this.verificationUpdateCallback = verificationUpdateCallback;
   }
   
-  /**
-   * Connect to the WebSocket server
-   */
-  connect(username: string): void {
-    if (!username) return;
-    
-    this.username = username;
-    this.ws = new WebSocket('ws://localhost:3001');
+connect(username: string): void {
+  if (!username) return;
+  
+  this.username = username;
+  
+  // Debug logging
+  console.log('Environment:', import.meta.env.PROD ? 'Production' : 'Development');
+  console.log('WebSocket URL env variable:', import.meta.env.VITE_WEBSOCKET_URL);
+  
+  // Determine WebSocket URL
+  let wsUrl = 'ws://wss://ngobronline-production.up.railway.app';
+  if (typeof window !== 'undefined' && window.location.host.includes('vercel.app')) {
+    wsUrl = `wss://ngobronline-production.up.railway.app`;
+    console.log('Using production WebSocket URL:', wsUrl);
+  }
+  
+  console.log('Connecting to WebSocket server at:', wsUrl);
+  this.ws = new WebSocket(wsUrl);
     
     this.ws.onopen = () => {
       this.connected = true;
