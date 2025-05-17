@@ -1,23 +1,17 @@
-// websocket-server.cjs
 const WebSocket = require('ws');
 const http = require('http');
 const { PrismaClient } = require('@prisma/client');
-const dotenv = require('dotenv');
 
-// Load environment variables
-dotenv.config();
+require('dotenv').config();
 
-// Check for DATABASE_URL
 if (!process.env.DATABASE_URL) {
   console.error('ERROR: DATABASE_URL environment variable is not set');
   console.error('Please ensure your .env file contains DATABASE_URL');
   process.exit(1);
 }
 
-// Initialize Prisma client
 const prisma = new PrismaClient();
 
-// Test database connection
 prisma.$connect()
   .then(() => {
     console.log('Successfully connected to database');
@@ -130,9 +124,6 @@ wss.on('connection', (ws) => {
           
           console.log(`Stored message from ${username} to ${recipientUsername}`);
           
-          // Add message ID to the signed message for client-side tracking
-          signedMessage.id = storedMessage.id;
-          
           // Check if recipient is online
           const recipientWs = connections.get(recipientUsername);
           
@@ -154,8 +145,6 @@ wss.on('connection', (ws) => {
             ws.send(JSON.stringify({
               type: 'delivered',
               to: recipientUsername,
-              messageId: storedMessage.id,
-              status: 'DELIVERED',
               content: `Message delivered to ${recipientUsername}`
             }));
             
@@ -165,8 +154,6 @@ wss.on('connection', (ws) => {
             ws.send(JSON.stringify({
               type: 'pending',
               to: recipientUsername,
-              messageId: storedMessage.id,
-              status: 'PENDING',
               content: `User "${recipientUsername}" is not online. Message will be delivered when they connect.`
             }));
             
@@ -177,47 +164,6 @@ wss.on('connection', (ws) => {
           ws.send(JSON.stringify({
             type: 'error',
             message: 'Failed to process or deliver message'
-          }));
-        }
-      }
-      
-      // Handle read receipt
-      else if (data.type === 'read_receipt' && username && userId) {
-        try {
-          const { messageId, to } = data;
-          
-          if (!messageId || !to) {
-            ws.send(JSON.stringify({
-              type: 'error',
-              message: 'Missing messageId or recipient in read receipt'
-            }));
-            return;
-          }
-          
-          // Update message status in database
-          await prisma.message.update({
-            where: { id: messageId },
-            data: { status: 'READ' }
-          });
-          
-          console.log(`Message ${messageId} marked as read by ${username}`);
-          
-          // Forward read receipt to the original sender
-          const senderWs = connections.get(to);
-          if (senderWs && senderWs.readyState === WebSocket.OPEN) {
-            senderWs.send(JSON.stringify({
-              type: 'status_update',
-              messageId,
-              status: 'READ',
-              from: username
-            }));
-            console.log(`Notified ${to} that message ${messageId} was read by ${username}`);
-          }
-        } catch (error) {
-          console.error('Error handling read receipt:', error);
-          ws.send(JSON.stringify({
-            type: 'error',
-            message: 'Failed to process read receipt'
           }));
         }
       }
@@ -260,7 +206,6 @@ async function deliverPendingMessages(username, userId, ws) {
     for (const msg of pendingMessages) {
       // Create signed message format
       const signedMessage = {
-        id: msg.id,
         sender_username: msg.sender.username,
         receiver_username: username,
         plaintext_message: msg.plaintextContent,
@@ -291,9 +236,7 @@ async function deliverPendingMessages(username, userId, ws) {
       const senderWs = connections.get(msg.sender.username);
       if (senderWs && senderWs.readyState === WebSocket.OPEN) {
         senderWs.send(JSON.stringify({
-          type: 'status_update',
-          messageId: msg.id,
-          status: 'DELIVERED',
+          type: 'delivered',
           to: username,
           content: `Message delivered to ${username}`
         }));
@@ -311,8 +254,6 @@ server.on('upgrade', (request, socket, head) => {
   });
 });
 
-// Start the server
-const PORT = process.env.WS_PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`WebSocket server running on port ${PORT}`);
+server.listen(3001, () => {
+  console.log('WebSocket server running on port 3001');
 });

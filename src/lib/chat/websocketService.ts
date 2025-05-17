@@ -1,7 +1,5 @@
 import type { Message, SignedMessage, WebSocketMessage, VerificationStatus } from './types';
-import { MessageStatus } from './types';
 import { verifySignedMessage, clearPublicKeyCache } from './verifyMessage';
-
 
 export class WebSocketService {
   private ws: WebSocket | null = null;
@@ -11,30 +9,15 @@ export class WebSocketService {
   private connectionStatusCallback: (status: string) => void;
   private messageCallback: (message: Message & { id?: string }) => void;
   private verificationUpdateCallback: (messageId: string, status: VerificationStatus, isValid?: boolean) => void;
-  private statusUpdateCallback?: (messageId: string, status: MessageStatus) => void;
   
   constructor(
     connectionStatusCallback: (status: string) => void,
     messageCallback: (message: Message & { id?: string }) => void,
-    verificationUpdateCallback: (messageId: string, status: VerificationStatus, isValid?: boolean) => void,
-    statusUpdateCallback?: (messageId: string, status: MessageStatus) => void
+    verificationUpdateCallback: (messageId: string, status: VerificationStatus, isValid?: boolean) => void
   ) {
     this.connectionStatusCallback = connectionStatusCallback;
     this.messageCallback = messageCallback;
     this.verificationUpdateCallback = verificationUpdateCallback;
-    this.statusUpdateCallback = statusUpdateCallback;
-  }
-
-  // Add this new method to handle message status updates
-  private handleMessageStatusUpdate(data: any): void {
-    if (!this.statusUpdateCallback) return;
-    
-    if (data.type === 'status_update' && data.messageId && data.status) {
-      this.statusUpdateCallback(data.messageId, data.status);
-    }
-    else if (data.type === 'read_receipt' && data.messageId) {
-      this.statusUpdateCallback(data.messageId, MessageStatus.READ);
-    }
   }
   
   connect(username: string): void {
@@ -292,26 +275,6 @@ export class WebSocketService {
     } catch (error) {
       console.error('Offline verification error:', error);
       this.verificationUpdateCallback(messageId, 'failed', false);
-    }
-  }
-
-  public sendReadReceipt(senderUsername: string, messageId: string): void {
-    if (!this.connected || !this.userIdentified || !this.ws) {
-      console.log('Cannot send read receipt: not connected');
-      return;
-    }
-    
-    try {
-      this.ws.send(JSON.stringify({
-        type: 'read_receipt',
-        messageId,
-        from: this.username,
-        to: senderUsername
-      }));
-      
-      console.log(`Sent read receipt to ${senderUsername} for message ${messageId}`);
-    } catch (error) {
-      console.error('Error sending read receipt:', error);
     }
   }
   

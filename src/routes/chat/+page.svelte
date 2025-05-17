@@ -7,7 +7,6 @@
   import { ChatLocalStorageService } from '$lib/chat/localStorageService';
   import { clearPublicKeyCache } from '$lib/chat/verifyMessage';
   import type { Message, SignedMessage, VerificationStatus } from '$lib/chat/types';
-  import { MessageStatus } from '$lib/chat/types';  // Import the enum
   import ContactList from '../../components/contactList.svelte';
   
   // State variables
@@ -23,13 +22,6 @@
   let autoSaveEnabled = true;
   let showContacts = true;
   
-  // Add status icons (can be used later)
-  const statusIcons = {
-    [MessageStatus.PENDING]: '⌛',
-    [MessageStatus.DELIVERED]: '✓',
-    [MessageStatus.READ]: '✓✓'
-  };
-  
   // Handle connection status changes
   function handleConnectionStatus(status: string) {
     connectionStatus = status;
@@ -40,21 +32,6 @@
     messages = [...messages, message];
     
     // Save messages when a new one is added
-    if (autoSaveEnabled && browser && username && recipientUsername) {
-      saveCurrentConversation();
-    }
-  }
-  
-  // Handle message status updates (new function)
-  function handleMessageStatusUpdate(messageId: string, status: MessageStatus) {
-    messages = messages.map(msg => {
-      if (msg.id === messageId) {
-        return { ...msg, status };
-      }
-      return msg;
-    });
-    
-    // Save messages after status updates
     if (autoSaveEnabled && browser && username && recipientUsername) {
       saveCurrentConversation();
     }
@@ -75,8 +52,6 @@
       saveCurrentConversation();
     }
   }
-  
-  // Rest of your existing functions...
   
   // Save the current conversation to local storage
   function saveCurrentConversation() {
@@ -267,7 +242,7 @@
       username = storedUsername;
       loadingUsername = false;
       
-      // Initialize WebSocket service - will need to update this constructor call when ready
+      // Initialize WebSocket service
       websocketService = new WebSocketService(
         handleConnectionStatus,
         handleNewMessage,
@@ -388,12 +363,6 @@
                         Sent at {msg.timestamp}
                       </div>
                       <div>{msg.content}</div>
-                      <!-- Add status indicator if available -->
-                      {#if msg.status}
-                        <div class="text-xs text-blue-200 mt-1 text-right">
-                          {statusIcons[msg.status]}
-                        </div>
-                      {/if}
                     </div>
                   </div>
                 {:else if msg.type === 'received'}
@@ -482,11 +451,6 @@
             <div><strong>From:</strong> {selectedMessage.from}</div>
             <div><strong>Message:</strong> {selectedMessage.content}</div>
             <div><strong>Timestamp:</strong> {selectedMessage.timestamp}</div>
-            
-            <!-- Display delivery status if available -->
-            {#if selectedMessage.status}
-              <div><strong>Delivery Status:</strong> {selectedMessage.status}</div>
-            {/if}
           </div>
           
           {#if selectedMessage.signedMessage}
