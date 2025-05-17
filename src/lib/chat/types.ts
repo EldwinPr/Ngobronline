@@ -1,5 +1,12 @@
-export type MessageType = 'system' | 'signed_chat' | 'error' | 'delivered' | 'sent' | 'received';
+export type MessageType = 'system' | 'signed_chat' | 'error' | 'delivered' | 'sent' | 'received' | 'pending';
 export type VerificationStatus = 'pending' | 'verifying' | 'verified' | 'failed' | 'not_applicable';
+
+// Add this enum for message delivery status
+export enum MessageStatus {
+  PENDING = 'PENDING',
+  DELIVERED = 'DELIVERED',
+  READ = 'READ'
+}
 
 export interface Message {
   type: MessageType;
@@ -8,6 +15,7 @@ export interface Message {
   from?: string;
   to?: string;
   verificationStatus?: VerificationStatus;
+  status?: MessageStatus;
   signedMessage?: SignedMessage;
 }
 
