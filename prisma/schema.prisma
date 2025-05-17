@@ -32,17 +32,25 @@ model PublicKey {
   @@index([userId])
 }
 
+enum MessageStatus {
+  PENDING
+  DELIVERED
+  READ
+}
+
 model Message {
-  id               String   @id @default(uuid())
+  id               String        @id @default(uuid())
   senderId         String
-  sender           User     @relation("SentMessages", fields: [senderId], references: [id])
+  sender           User          @relation("SentMessages", fields: [senderId], references: [id])
 
   receiverId       String
-  receiver         User     @relation("SentToMessages", fields: [receiverId], references: [id])
+  receiver         User          @relation("SentToMessages", fields: [receiverId], references: [id])
 
   plaintextContent String
   messageHash      String
   signatureR       String
   signatureS       String
-  createdAt        DateTime @default(now())
+  createdAt        DateTime      @default(now())
+
+  status           MessageStatus @default(PENDING)
 }
