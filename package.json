@@ -7,6 +7,7 @@
 		"dev": "vite dev",
 		"build": "prisma generate && vite build",
 		"websocket": "node websocket-server.cjs",
+		"start": "node websocket-server.cjs",
 		"both": "concurrently \"npm run dev\" \"npm run websocket\"",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
