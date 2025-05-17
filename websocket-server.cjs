@@ -48,6 +48,7 @@ const connections = new Map();
 async function storeOfflineMessage(senderUsername, recipientUsername, signedMessage) {
   try {
     console.log(`Storing offline message from ${senderUsername} to ${recipientUsername}`);
+    console.log('Original signed message:', JSON.stringify(signedMessage, null, 2));
     
     // Get sender and recipient IDs
     const sender = await prisma.user.findUnique({
@@ -65,7 +66,6 @@ async function storeOfflineMessage(senderUsername, recipientUsername, signedMess
       throw new Error('Sender or recipient not found');
     }
     
-    // Store message in database
     const savedMessage = await prisma.message.create({
       data: {
         senderId: sender.id,
@@ -129,13 +129,15 @@ async function deliverPendingMessages(username, socket) {
         sender_username: message.sender.username,
         receiver_username: username,
         plaintext_message: message.plaintextContent,
-        message_hash: message.messageHash,
+        message_hash: message.messageHash, 
         signature: {
-          r: message.signatureR,
-          s: message.signatureS
+          r: message.signatureR,         
+          s: message.signatureS               
         },
         timestamp: message.createdAt.toISOString()
       };
+
+      console.log('Reconstructed message:', JSON.stringify(signedMessage, null, 2));
       
       // Send to user
       socket.send(JSON.stringify({
