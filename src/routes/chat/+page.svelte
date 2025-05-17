@@ -21,6 +21,8 @@
   let showVerificationDetails = false;
   let autoSaveEnabled = true;
   let showContacts = true;
+  let showDebugInfo = false;
+  let debugMessages: Array<{direction: string, data: any, timestamp: string}> = [];
   
   // Handle connection status changes
   function handleConnectionStatus(status: string) {
@@ -29,6 +31,16 @@
   
   // Handle new messages
   function handleNewMessage(message: Message & { id?: string }) {
+    // Add message to debug log if it's a received message with signature
+    if (message.type === 'received' && message.signedMessage) {
+      debugMessages = [...debugMessages, {
+        direction: 'RECEIVED',
+        data: message.signedMessage,
+        timestamp: new Date().toISOString()
+      }];
+    }
+    
+    // Original handling continues
     messages = [...messages, message];
     
     // Save messages when a new one is added
@@ -132,6 +144,21 @@
     if (!websocketService || !messageText || !recipientUsername) return;
     
     try {
+      // Create the signed message first so we can capture it
+      const signedMessage = await createSignedMessage(
+        username,
+        recipientUsername,
+        messageText
+      );
+      
+      // Add to debug log
+      debugMessages = [...debugMessages, {
+        direction: 'SENT',
+        data: signedMessage,
+        timestamp: new Date().toISOString()
+      }];
+      
+      // Send using the service
       await websocketService.sendSignedMessage(recipientUsername, messageText, createSignedMessage);
       
       // Clear input after successful send
@@ -226,8 +253,19 @@
       }
       
       localStorage.removeItem('username');
+      localStorage.removeItem('user_id');
       goto('/login');
     }
+  }
+
+  // Function to toggle debug info
+  function toggleDebugInfo() {
+    showDebugInfo = !showDebugInfo;
+  }
+  
+  // Function to clear debug logs
+  function clearDebugLogs() {
+    debugMessages = [];
   }
   
   // Setup on component mount
@@ -479,6 +517,48 @@
           </div>
         </div>
       </div>
+    </div>
+  {/if}
+</div>
+
+<div class="mt-4">
+  <button 
+    on:click={toggleDebugInfo}
+    class="px-2 py-1 bg-gray-200 border border-gray-300 rounded text-sm"
+  >
+    {showDebugInfo ? 'Hide' : 'Show'} Debug Info
+  </button>
+  
+  {#if showDebugInfo}
+    <div class="mt-2 border p-2 rounded bg-gray-50">
+      <div class="flex justify-between items-center mb-2">
+        <h3 class="font-bold">Message Debug Information</h3>
+        <button 
+          on:click={clearDebugLogs}
+          class="px-2 py-1 bg-red-100 border border-red-300 rounded text-xs"
+        >
+          Clear Logs
+        </button>
+      </div>
+      
+      {#if debugMessages.length === 0}
+        <p class="text-gray-500 text-sm">No messages logged yet. Send or receive a message to see debug info.</p>
+      {:else}
+        <div class="max-h-96 overflow-y-auto">
+          {#each debugMessages as debug}
+            <div class="mb-3 p-2 border-b">
+              <div class="font-mono text-xs mb-1">
+                <span class={debug.direction === 'SENT' ? 'text-blue-600' : 'text-green-600'}>
+                  [{debug.direction}] {debug.timestamp}
+                </span>
+              </div>
+              <pre class="text-xs bg-gray-100 p-2 rounded overflow-x-auto">
+                {JSON.stringify(debug.data, null, 2)}
+              </pre>
+            </div>
+          {/each}
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
