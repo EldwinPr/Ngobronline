@@ -396,6 +396,12 @@
                   <div class="text-amber-600 text-xs italic text-center my-1">
                     {msg.content}
                   </div>
+                {:else if msg.type === 'saved'}
+                <div class="flex justify-center">
+                  <div class="text-amber-600 text-xs italic text-center my-1 bg-amber-50 px-2 py-1 rounded">
+                    {msg.content}
+                  </div>
+                </div>
                 {/if}
               </div>
             {/each}

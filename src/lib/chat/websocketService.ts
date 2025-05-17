@@ -160,6 +160,15 @@ export class WebSocketService {
             timestamp: new Date().toLocaleTimeString()
           });
           break;
+
+        case 'saved':
+          this.messageCallback({
+            type: 'saved',
+            to: data.to,
+            content: data.content || `Message saved for delivery to ${data.to} when they come online`,
+            timestamp: new Date().toLocaleTimeString()
+          });
+          break;
           
         default:
           console.log(`Unknown message type: ${data.type}`);
@@ -169,9 +178,6 @@ export class WebSocketService {
     }
   }
   
-  /**
-   * Verify a message and update its status
-   */
   private async verifyMessage(messageId: string, signedMessage: SignedMessage, forceRefresh = false): Promise<void> {
     try {
       // Update status to verifying

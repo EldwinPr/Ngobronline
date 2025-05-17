@@ -1,4 +1,4 @@
-export type MessageType = 'system' | 'signed_chat' | 'error' | 'delivered' | 'sent' | 'received';
+export type MessageType = 'system' | 'signed_chat' | 'error' | 'delivered' | 'saved' | 'sent' | 'received';
 export type VerificationStatus = 'pending' | 'verifying' | 'verified' | 'failed' | 'not_applicable';
 
 export interface Message {
