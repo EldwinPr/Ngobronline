@@ -25,16 +25,8 @@ connect(username: string): void {
   
   this.username = username;
   
-  // Debug logging
-  console.log('Environment:', import.meta.env.PROD ? 'Production' : 'Development');
-  console.log('WebSocket URL env variable:', import.meta.env.VITE_WEBSOCKET_URL);
-  
   // Determine WebSocket URL
   let wsUrl = 'ws://wss://ngobronline-production.up.railway.app';
-  if (typeof window !== 'undefined' && window.location.host.includes('vercel.app')) {
-    wsUrl = `wss://ngobronline-production.up.railway.app`;
-    console.log('Using production WebSocket URL:', wsUrl);
-  }
   
   console.log('Connecting to WebSocket server at:', wsUrl);
   this.ws = new WebSocket(wsUrl);
