@@ -2,9 +2,11 @@
   import { onMount, onDestroy } from 'svelte';
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
-  import { createSignedMessage } from '$lib/chat/messageSigningFunctions';
+  import { createSignedMessage, getPrivateKeyFromStorage } from '$lib/chat/messageSigningFunctions';
   import { WebSocketService } from '$lib/chat/websocketService';
   import { ChatLocalStorageService } from '$lib/chat/localStorageService';
+  import { clearPublicKeyCache } from '$lib/chat/verifyMessage';
+  import { generateKeyPair } from '$lib/chat/keyDerivation';
   import type { Message, SignedMessage, VerificationStatus } from '$lib/chat/types';
   
   // State variables
@@ -18,7 +20,8 @@
   let selectedMessage: (Message & { id?: string }) | null = null;
   let showVerificationDetails = false;
   let autoSaveEnabled = true; // Flag to control automatic saving
-  let debugMode = false; // Toggle for debugging info
+  let debugMode = true; // Set debugging to true by default
+  let testResult = '';
   
   // Handle connection status changes
   function handleConnectionStatus(status: string) {
@@ -264,6 +267,82 @@
     if (debugMode) console.log("Manually forcing save");
     saveCurrentConversation();
   }
+
+  // TEST FUNCTIONS - For debugging verification issues
+  
+  // Generate a random private key for testing
+  async function generateRandomKey() {
+    try {
+      testResult = "Generating random key...";
+      
+      // Backup original key
+      const originalKey = localStorage.getItem('ecdsa_private_key');
+      localStorage.setItem('ecdsa_private_key_backup', originalKey || '');
+      
+      // Generate a completely new random key
+      const randomValue = Math.random().toString() + Date.now().toString();
+      const { privateKey } = await generateKeyPair(username + randomValue, "testPassword" + randomValue);
+      
+      // Store the new key
+      localStorage.setItem('ecdsa_private_key', JSON.stringify(privateKey));
+      
+      // Log the changes
+      console.log("Original private key (first chars):", originalKey?.substring(0, 50));
+      console.log("New private key (first chars):", JSON.stringify(privateKey).substring(0, 50));
+      
+      testResult = "Random key generated! Now send a message to test - it should fail verification.";
+    } catch (error) {
+      console.error("Error generating random key:", error);
+      testResult = "Error: " + String(error);
+    }
+  }
+  
+  // Restore original key
+  function restoreOriginalKey() {
+    try {
+      const backup = localStorage.getItem('ecdsa_private_key_backup');
+      if (!backup) {
+        testResult = "No backup key found!";
+        return;
+      }
+      
+      // Restore the original key
+      localStorage.setItem('ecdsa_private_key', backup);
+      testResult = "Original key restored! Messages should verify correctly now.";
+    } catch (error) {
+      console.error("Error restoring original key:", error);
+      testResult = "Error: " + String(error);
+    }
+  }
+  
+  // Check current key
+  function checkCurrentKey() {
+    try {
+      const currentKey = localStorage.getItem('ecdsa_private_key');
+      const backupKey = localStorage.getItem('ecdsa_private_key_backup');
+      
+      const currentKeyPrefix = currentKey ? currentKey.substring(0, 20) + "..." : "None";
+      const backupKeyPrefix = backupKey ? backupKey.substring(0, 20) + "..." : "None";
+      
+      const keysMatch = currentKey === backupKey;
+      
+      testResult = `Current key: ${currentKeyPrefix}\nBackup key: ${backupKeyPrefix}\nKeys match: ${keysMatch}`;
+    } catch (error) {
+      console.error("Error checking keys:", error);
+      testResult = "Error: " + String(error);
+    }
+  }
+  
+  // Clear public key cache
+  function clearCache() {
+    try {
+      clearPublicKeyCache();
+      testResult = "Public key cache cleared!";
+    } catch (error) {
+      console.error("Error clearing cache:", error);
+      testResult = "Error: " + String(error);
+    }
+  }
   
   // Setup on component mount
   onMount(() => {
@@ -359,6 +438,52 @@
         >
           Logout
         </button>
+      </div>
+      
+      <!-- Test Controls Panel -->
+      <div class="border border-yellow-300 bg-yellow-50 p-3 rounded mb-3">
+        <h3 class="text-sm font-bold mb-2">Verification Testing Panel</h3>
+        <div class="flex gap-2 mb-2">
+          <button 
+            class="px-2 py-1 bg-blue-500 text-white rounded text-sm" 
+            on:click={generateRandomKey}
+          >
+            1. Generate Random Key
+          </button>
+          <button 
+            class="px-2 py-1 bg-green-500 text-white rounded text-sm" 
+            on:click={restoreOriginalKey}
+          >
+            3. Restore Original Key
+          </button>
+        </div>
+        <div class="flex gap-2">
+          <button 
+            class="px-2 py-1 bg-gray-500 text-white rounded text-sm" 
+            on:click={checkCurrentKey}
+          >
+            Check Current Key
+          </button>
+          <button 
+            class="px-2 py-1 bg-purple-500 text-white rounded text-sm" 
+            on:click={clearCache}
+          >
+            Clear Cache
+          </button>
+        </div>
+        <div class="mt-2">
+          <p class="text-sm">Instructions:</p>
+          <ol class="text-xs ml-4 list-decimal">
+            <li>Click "Generate Random Key" to replace your private key</li>
+            <li>Send a message - it should fail verification on the recipient side</li>
+            <li>Click "Restore Original Key" to revert back</li>
+          </ol>
+        </div>
+        {#if testResult}
+          <div class="mt-2 p-2 bg-gray-100 text-xs overflow-x-auto whitespace-pre-wrap rounded">
+            {testResult}
+          </div>
+        {/if}
       </div>
       
       <div>

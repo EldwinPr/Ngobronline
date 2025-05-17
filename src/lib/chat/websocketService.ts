@@ -1,5 +1,5 @@
 import type { Message, SignedMessage, WebSocketMessage, VerificationStatus } from './types';
-import { verifySignedMessage } from './verifyMessage';
+import { verifySignedMessage, clearPublicKeyCache } from './verifyMessage';
 
 export class WebSocketService {
   private ws: WebSocket | null = null;
@@ -53,6 +53,11 @@ export class WebSocketService {
       this.ws.onopen = () => {
         this.connected = true;
         this.connectionStatusCallback('Connected to server');
+        
+        // Clear cached public keys on connection to ensure fresh data
+        clearPublicKeyCache();
+        console.log('Cleared public key cache on connect');
+        
         this.identifyUser();
       };
       
@@ -124,6 +129,9 @@ export class WebSocketService {
             // Generate a unique ID for this message
             const messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
             
+            // Clear the public key cache for the sender to ensure fresh verification
+            clearPublicKeyCache(signedMsg.sender_username);
+            
             // Add to messages with pending verification status
             this.messageCallback({
               type: 'received',
@@ -135,8 +143,8 @@ export class WebSocketService {
               id: messageId
             });
             
-            // Begin verification process
-            this.verifyMessage(messageId, signedMsg);
+            // Begin verification process with fresh public key
+            this.verifyMessage(messageId, signedMsg, true);
             
           } catch (parseError) {
             console.error('Error processing signed message:', parseError);
@@ -173,20 +181,24 @@ export class WebSocketService {
   /**
    * Verify a message and update its status
    */
-  private async verifyMessage(messageId: string, signedMessage: SignedMessage): Promise<void> {
+  private async verifyMessage(messageId: string, signedMessage: SignedMessage, forceRefresh = false): Promise<void> {
     try {
       // Update status to verifying
       this.verificationUpdateCallback(messageId, 'verifying');
       
-      // Perform the actual verification
-      const isValid = await verifySignedMessage(signedMessage);
+      console.log(`Starting verification for message ${messageId} with forceRefresh=${forceRefresh}`);
+      
+      // Perform the actual verification - passing forceRefresh flag
+      const isValid = await verifySignedMessage(signedMessage, forceRefresh);
       
       // Update the status based on the result
       const status: VerificationStatus = isValid ? 'verified' : 'failed';
+      console.log(`Message ${messageId} verification result: ${status}`);
+      
       this.verificationUpdateCallback(messageId, status, isValid);
       
     } catch (error) {
-      console.error('Message verification error:', error);
+      console.error(`Message ${messageId} verification error:`, error);
       this.verificationUpdateCallback(messageId, 'failed', false);
     }
   }
@@ -195,7 +207,12 @@ export class WebSocketService {
    * Public method to manually reverify a message
    */
   public reverifyMessage(messageId: string, signedMessage: SignedMessage): void {
-    this.verifyMessage(messageId, signedMessage);
+    // Clear any cached public key for this sender
+    clearPublicKeyCache(signedMessage.sender_username);
+    console.log(`Reverifying message ${messageId} from ${signedMessage.sender_username}`);
+    
+    // Force refresh public key for verification
+    this.verifyMessage(messageId, signedMessage, true);
   }
   
   /**
@@ -207,12 +224,16 @@ export class WebSocketService {
     }
     
     try {
+      console.log(`Creating signed message from ${this.username} to ${recipientUsername}`);
+      
       // Create signed message using the provided function
       const signedMessage = await signMessageFunction(
         this.username,
         recipientUsername,
         messageText
       );
+      
+      console.log('Signed message created with hash:', signedMessage.message_hash.substring(0, 10) + '...');
       
       // Send via WebSocket
       this.ws.send(JSON.stringify({
@@ -236,9 +257,13 @@ export class WebSocketService {
   }
 
   public verifyLoadedMessage(messageId: string, signedMessage: SignedMessage): void {
+    // Clear cached public key for this sender
+    clearPublicKeyCache(signedMessage.sender_username);
+    
     // Try to use the connection if available
     if (this.connected && this.userIdentified) {
-      this.verifyMessage(messageId, signedMessage);
+      console.log(`Verifying loaded message ${messageId} from ${signedMessage.sender_username}`);
+      this.verifyMessage(messageId, signedMessage, true);
       return;
     }
     
@@ -254,14 +279,18 @@ export class WebSocketService {
       // Update status to verifying
       this.verificationUpdateCallback(messageId, 'verifying');
       
+      console.log(`Performing offline verification for message ${messageId}`);
+      
       // Import the verification function
       const { verifySignedMessage } = await import('./verifyMessage');
       
-      // Perform the verification
-      const isValid = await verifySignedMessage(signedMessage);
+      // Perform the verification with forced refresh
+      const isValid = await verifySignedMessage(signedMessage, true);
       
       // Update status based on the result
       const status: VerificationStatus = isValid ? 'verified' : 'failed';
+      console.log(`Offline verification result for ${messageId}: ${status}`);
+      
       this.verificationUpdateCallback(messageId, status, isValid);
       
     } catch (error) {
