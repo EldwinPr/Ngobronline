@@ -23,9 +23,6 @@ export function getPrivateKeyFromStorage(): Uint8Array {
   // Convert the base64url encoded 'd' parameter to hex
   const privateKeyHex = base64UrlToHex(privateKeyJwk.d);
   
-  // For debugging: output the first few characters of the private key being used
-  console.log(`Using private key starting with: ${privateKeyHex.substring(0, 8)}...`);
-  
   // Convert hex to bytes
   return hexToBytes(privateKeyHex);
 }
@@ -89,10 +86,6 @@ export async function signMessageHash(messageHash: string, privateKey: Uint8Arra
     const rHex = bufferToHex(r);
     const sHex = bufferToHex(s);
     
-    // For debugging: show signature components
-    console.log('Created signature with r starting with:', rHex.substring(0, 8));
-    console.log('Created signature with s starting with:', sHex.substring(0, 8));
-    
     return {
       r: rHex,
       s: sHex
@@ -137,8 +130,6 @@ export async function createSignedMessage(
   
   // Create message hash
   const messageHash = await createMessageHash(messageData);
-  
-  console.log('Message hash created:', messageHash.substring(0, 10) + '...');
   
   // Sign message
   const signature = await signMessageHash(messageHash, privateKey);

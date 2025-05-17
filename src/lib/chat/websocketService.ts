@@ -25,28 +25,20 @@ export class WebSocketService {
     
     this.username = username;
     
-    // Debug logging
-    console.log('Environment:', import.meta.env.PROD ? 'Production' : 'Development');
-    console.log('WebSocket URL env variable:', import.meta.env.VITE_WEBSOCKET_URL);
-    
     // Use localhost for development
     let wsUrl = '';
     
     // Check if we're in a development environment
     if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
       wsUrl = 'ws://localhost:3001';
-      console.log('Using development WebSocket URL:', wsUrl);
     } else if (typeof window !== 'undefined' && window.location.host.includes('vercel.app')) {
       // Production deployment on Vercel
       wsUrl = 'wss://ngobronline-production.up.railway.app';
-      console.log('Using production WebSocket URL:', wsUrl);
     } else {
       // Default fallback
       wsUrl = 'ws://localhost:3001';
-      console.log('Using default WebSocket URL:', wsUrl);
     }
     
-    console.log('Connecting to WebSocket server at:', wsUrl);
     try {
       this.ws = new WebSocket(wsUrl);
       
@@ -56,7 +48,6 @@ export class WebSocketService {
         
         // Clear cached public keys on connection to ensure fresh data
         clearPublicKeyCache();
-        console.log('Cleared public key cache on connect');
         
         this.identifyUser();
       };
@@ -186,14 +177,11 @@ export class WebSocketService {
       // Update status to verifying
       this.verificationUpdateCallback(messageId, 'verifying');
       
-      console.log(`Starting verification for message ${messageId} with forceRefresh=${forceRefresh}`);
-      
       // Perform the actual verification - passing forceRefresh flag
       const isValid = await verifySignedMessage(signedMessage, forceRefresh);
       
       // Update the status based on the result
       const status: VerificationStatus = isValid ? 'verified' : 'failed';
-      console.log(`Message ${messageId} verification result: ${status}`);
       
       this.verificationUpdateCallback(messageId, status, isValid);
       
@@ -209,7 +197,6 @@ export class WebSocketService {
   public reverifyMessage(messageId: string, signedMessage: SignedMessage): void {
     // Clear any cached public key for this sender
     clearPublicKeyCache(signedMessage.sender_username);
-    console.log(`Reverifying message ${messageId} from ${signedMessage.sender_username}`);
     
     // Force refresh public key for verification
     this.verifyMessage(messageId, signedMessage, true);
@@ -224,16 +211,12 @@ export class WebSocketService {
     }
     
     try {
-      console.log(`Creating signed message from ${this.username} to ${recipientUsername}`);
-      
       // Create signed message using the provided function
       const signedMessage = await signMessageFunction(
         this.username,
         recipientUsername,
         messageText
       );
-      
-      console.log('Signed message created with hash:', signedMessage.message_hash.substring(0, 10) + '...');
       
       // Send via WebSocket
       this.ws.send(JSON.stringify({
@@ -262,7 +245,6 @@ export class WebSocketService {
     
     // Try to use the connection if available
     if (this.connected && this.userIdentified) {
-      console.log(`Verifying loaded message ${messageId} from ${signedMessage.sender_username}`);
       this.verifyMessage(messageId, signedMessage, true);
       return;
     }
@@ -279,8 +261,6 @@ export class WebSocketService {
       // Update status to verifying
       this.verificationUpdateCallback(messageId, 'verifying');
       
-      console.log(`Performing offline verification for message ${messageId}`);
-      
       // Import the verification function
       const { verifySignedMessage } = await import('./verifyMessage');
       
@@ -289,7 +269,6 @@ export class WebSocketService {
       
       // Update status based on the result
       const status: VerificationStatus = isValid ? 'verified' : 'failed';
-      console.log(`Offline verification result for ${messageId}: ${status}`);
       
       this.verificationUpdateCallback(messageId, status, isValid);
       
