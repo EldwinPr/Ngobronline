@@ -1,291 +1,39 @@
-<!-- routes/chat/+page.svelte -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { createSignedMessage } from '$lib/messageSigningFunctions';
-  import * as secp256k1 from '@noble/secp256k1';
-  
-  // Define types
-  type MessageType = 'system' | 'chat' | 'error' | 'delivered' | 'sent' | 'received' | 'debug';
-  
-  interface Message {
-    type: MessageType;
-    content: string;
-    timestamp: string;
-    from?: string;
-    to?: string;
-  }
-  
-  interface WebSocketMessage {
-    type: string;
-    username?: string;
-    to?: string;
-    from?: string;
-    content?: string;
-    message?: any;
-    timestamp?: number;
-  }
-  
-  interface SignedMessage {
-    sender_username: string;
-    receiver_username: string;
-    plaintext_message: string;
-    message_hash: string;
-    signature: {
-      r: string;
-      s: string;
-    };
-    timestamp: string;
-  }
+  import { WebSocketService } from '$lib/chat/websocketService';
+  import type { Message } from '$lib/chat/types';
   
   // State variables
-  let ws: WebSocket | null = null;
-  let connected = false;
+  let websocketService: WebSocketService | null = null;
   let username = '';
   let recipientUsername = '';
   let messageText = '';
   let messages: Message[] = [];
-  let userIdentified = false;
   let connectionStatus = 'Disconnected';
   let loadingUsername = true;
-  let lastSignedMessage: SignedMessage | null = null;
-  let showMessageFormat = false;
-  let debugMode = true; // Enable debug mode by default
   
-  // Check authentication and redirect if not logged in
-  onMount(() => {
-    if (browser) {
-      const storedUsername = localStorage.getItem('username');
-      if (!storedUsername) {
-        goto('/login');
-        return;
-      }
-      
-      username = storedUsername;
-      loadingUsername = false;
-      connect();
-      
-      // Add debug message
-      addDebugMessage(`Authenticated as ${username}`);
-    }
-  });
-  
-  // Helper function to add debug messages
-  function addDebugMessage(content: string) {
-    if (debugMode) {
-      messages = [...messages, {
-        type: 'debug',
-        content,
-        timestamp: new Date().toLocaleTimeString()
-      }];
-    }
-    console.log(`[DEBUG] ${content}`);
+  // Handle connection status changes
+  function handleConnectionStatus(status: string) {
+    connectionStatus = status;
   }
   
-  // Connect to WebSocket server
-  function connect(): void {
-    if (!browser) return;
-    
-    ws = new WebSocket('ws://localhost:3001');
-    
-    ws.onopen = () => {
-      connected = true;
-      connectionStatus = 'Connected to server';
-      
-      // Auto-identify if username is available
-      if (username) {
-        identifyUser();
-      }
-    };
-    
-    ws.onclose = () => {
-      connected = false;
-      userIdentified = false;
-      connectionStatus = 'Disconnected';
-      
-      // Attempt to reconnect after a delay
-      setTimeout(connect, 3000);
-    };
-    
-    ws.onerror = (error) => {
-      connectionStatus = 'Connection error';
-      console.error('WebSocket error:', error);
-    };
-    
-    ws.onmessage = (event) => {
-      try {
-        const rawData = event.data;
-        addDebugMessage(`Raw WebSocket message: ${rawData}`);
-        
-        const data: WebSocketMessage = JSON.parse(rawData);
-        console.log('Parsed WebSocket message:', data);
-        
-        // Handle different message types
-        switch (data.type) {
-          case 'system':
-            if (data.message) {
-              messages = [...messages, {
-                type: 'system',
-                content: typeof data.message === 'string' ? data.message : JSON.stringify(data.message),
-                timestamp: new Date().toLocaleTimeString()
-              }];
-            }
-            break;
-            
-          case 'chat':
-            if (data.from && data.content) {
-              messages = [...messages, {
-                type: 'received',
-                from: data.from,
-                content: data.content,
-                timestamp: data.timestamp 
-                  ? new Date(data.timestamp).toLocaleTimeString() 
-                  : new Date().toLocaleTimeString()
-              }];
-            }
-            break;
-            
-          case 'signed_chat':
-            addDebugMessage(`Processing signed_chat: ${JSON.stringify(data)}`);
-            
-            try {
-              // Extract the signed message from the data
-              let signedMsg: SignedMessage;
-              
-              if (typeof data.message === 'string') {
-                addDebugMessage(`Parsing string message: ${data.message}`);
-                signedMsg = JSON.parse(data.message);
-              } else {
-                addDebugMessage(`Using object message: ${JSON.stringify(data.message)}`);
-                signedMsg = data.message as SignedMessage;
-              }
-              
-              addDebugMessage(`Extracted signed message: ${JSON.stringify(signedMsg)}`);
-              
-              // Check if message is valid
-              if (!signedMsg || !signedMsg.sender_username || !signedMsg.receiver_username) {
-                addDebugMessage('Invalid signed message format');
-                return;
-              }
-              
-              // Store the last received signed message for inspection
-              lastSignedMessage = signedMsg;
-              
-              // Add to messages array regardless of recipient
-              // This helps debug if messages are being received but not displayed
-              addDebugMessage(`Adding signed message from ${signedMsg.sender_username} to ${signedMsg.receiver_username}`);
-              
-              messages = [...messages, {
-                type: 'received',
-                from: signedMsg.sender_username,
-                to: signedMsg.receiver_username,
-                content: `${signedMsg.plaintext_message} [SIGNED]`,
-                timestamp: new Date(signedMsg.timestamp).toLocaleTimeString()
-              }];
-              
-            } catch (parseError) {
-              console.error('Error processing signed message:', parseError);
-              addDebugMessage(`Error processing signed message: ${parseError}`);
-              
-              messages = [...messages, {
-                type: 'error',
-                content: `Failed to parse signed message: ${parseError}`,
-                timestamp: new Date().toLocaleTimeString()
-              }];
-            }
-            break;
-            
-          case 'error':
-            if (data.message) {
-              messages = [...messages, {
-                type: 'error',
-                content: typeof data.message === 'string' ? data.message : JSON.stringify(data.message),
-                timestamp: new Date().toLocaleTimeString()
-              }];
-            }
-            break;
-            
-          default:
-            addDebugMessage(`Unknown message type: ${data.type}`);
-        }
-      } catch (error) {
-        console.error('Error parsing message:', error);
-        addDebugMessage(`Error parsing message: ${error}`);
-      }
-    };
-  }
-  
-  // Identify user to the server
-  function identifyUser(): void {
-    if (!connected || !username || !ws) return;
-    
-    ws.send(JSON.stringify({
-      type: 'identify',
-      username: username
-    }));
-    
-    userIdentified = true;
-  }
-  
-  // Send a regular message
-  function sendMessage(): void {
-    if (!connected || !userIdentified || !messageText || !recipientUsername || !ws) return;
-    
-    ws.send(JSON.stringify({
-      type: 'chat',
-      to: recipientUsername,
-      content: messageText
-    }));
-    
-    // Add message to local display
-    messages = [...messages, {
-      type: 'sent',
-      to: recipientUsername,
-      content: messageText,
-      timestamp: new Date().toLocaleTimeString()
-    }];
-    
-    // Clear message input
-    messageText = '';
+  // Handle new messages
+  function handleNewMessage(message: Message) {
+    messages = [...messages, message];
   }
   
   // Send a signed message
   async function sendSignedMessage(): Promise<void> {
-    if (!connected || !userIdentified || !messageText || !recipientUsername || !ws) return;
+    if (!websocketService || !messageText || !recipientUsername) return;
     
     try {
-      addDebugMessage('Creating signed message...');
+      await websocketService.sendSignedMessage(recipientUsername, messageText, createSignedMessage);
       
-      // Create signed message
-      const signedMessage = await createSignedMessage(
-        username,
-        recipientUsername,
-        messageText
-      );
-      
-      addDebugMessage(`Sending signed message: ${JSON.stringify(signedMessage)}`);
-      
-      // Store for inspection
-      lastSignedMessage = signedMessage;
-      
-      // Send via WebSocket
-      ws.send(JSON.stringify({
-        type: 'signed_chat',
-        message: signedMessage
-      }));
-      
-      // Add to local messages
-      messages = [...messages, {
-        type: 'sent',
-        to: recipientUsername,
-        content: `${messageText} [SIGNED]`,
-        timestamp: new Date().toLocaleTimeString()
-      }];
-      
-      // Clear input
+      // Clear input after successful send
       messageText = '';
-      
     } catch (error) {
       console.error('Error sending signed message:', error);
       messages = [...messages, {
@@ -300,26 +48,11 @@
     }
   }
   
-  // Toggle showing the message format
-  function toggleMessageFormat(): void {
-    showMessageFormat = !showMessageFormat;
-  }
-  
-  // Toggle debug mode
-  function toggleDebugMode(): void {
-    debugMode = !debugMode;
-  }
-  
-  // Format JSON for display
-  function formatJSON(obj: any): string {
-    return JSON.stringify(obj, null, 2);
-  }
-  
   // Handle Enter key in message input
   function handleKeydown(event: KeyboardEvent): void {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      sendMessage();
+      sendSignedMessage();
     }
   }
   
@@ -331,42 +64,59 @@
     }
   }
   
+  // Setup on component mount
+  onMount(() => {
+    if (browser) {
+      const storedUsername = localStorage.getItem('username');
+      if (!storedUsername) {
+        goto('/login');
+        return;
+      }
+      
+      username = storedUsername;
+      loadingUsername = false;
+      
+      // Initialize WebSocket service
+      websocketService = new WebSocketService(
+        handleConnectionStatus,
+        handleNewMessage
+      );
+      
+      // Connect to WebSocket server
+      websocketService.connect(username);
+    }
+  });
+  
   // Clean up on component destroy
   onDestroy(() => {
-    if (ws) {
-      ws.close();
+    if (websocketService) {
+      websocketService.disconnect();
     }
   });
 </script>
 
-<h1>Simple Chat</h1>
-
-<div>
-  <div>
-    <span>Status: {connectionStatus}</span>
-    <button on:click={toggleDebugMode} style="margin-left: 10px; padding: 2px 5px;">
-      {debugMode ? 'Disable' : 'Enable'} Debug
-    </button>
-  </div>
+<div class="chat-container">
+  <header>
+    <h1>Secure Chat</h1>
+    <div class="status-bar">
+      <span>Status: {connectionStatus}</span>
+    </div>
+  </header>
   
   {#if loadingUsername}
-    <div>Loading user information...</div>
+    <div class="loading">Loading user information...</div>
   {:else if !username}
-    <div>
+    <div class="error-message">
       <p>Not logged in. Redirecting to login page...</p>
     </div>
-  {:else if connected && !userIdentified}
-    <div>
-      <p>Connecting as {username}...</p>
-    </div>
-  {:else if connected && userIdentified}
-    <div>
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+  {:else}
+    <div class="chat-app">
+      <div class="user-header">
         <span>Connected as: <strong>{username}</strong></span>
-        <button on:click={logout} style="padding: 5px 10px;">Logout</button>
+        <button class="logout-btn" on:click={logout}>Logout</button>
       </div>
       
-      <div>
+      <div class="recipient-input">
         <input 
           type="text" 
           bind:value={recipientUsername} 
@@ -374,67 +124,164 @@
         />
       </div>
       
-      <div style="border: 1px solid #ccc; height: 300px; overflow-y: auto; margin: 10px 0; padding: 10px;">
+      <div class="message-container">
         {#each messages as msg}
-          <div>
+          <div class="message-item {msg.type}">
             {#if msg.type === 'system'}
-              <div style="color: gray;">
+              <div class="system-message">
                 [{msg.timestamp}] SYSTEM: {msg.content}
               </div>
             {:else if msg.type === 'error'}
-              <div style="color: red;">
+              <div class="error-message">
                 [{msg.timestamp}] ERROR: {msg.content}
               </div>
-            {:else if msg.type === 'debug'}
-              <div style="color: purple; font-style: italic;">
-                [{msg.timestamp}] DEBUG: {msg.content}
-              </div>
             {:else if msg.type === 'sent'}
-              <div style="color: blue;">
+              <div class="sent-message">
                 [{msg.timestamp}] TO {msg.to}: {msg.content}
               </div>
             {:else if msg.type === 'received'}
-              <div style="color: green;">
+              <div class="received-message">
                 [{msg.timestamp}] FROM {msg.from}: {msg.content}
+              </div>
+            {:else if msg.type === 'delivered'}
+              <div class="delivered-message">
+                [{msg.timestamp}] {msg.content}
               </div>
             {/if}
           </div>
         {/each}
       </div>
       
-      <div>
+      <div class="input-area">
         <textarea 
           bind:value={messageText} 
           placeholder="Type your message..." 
           on:keydown={handleKeydown}
           rows="3"
-          style="width: 100%;"
         ></textarea>
-        <div style="display: flex; gap: 10px; margin-top: 5px;">
-          <button on:click={sendMessage} disabled={!messageText || !recipientUsername}>
-            Send
-          </button>
-          <button on:click={sendSignedMessage} disabled={!messageText || !recipientUsername}>
-            Send Signed
-          </button>
-        </div>
+        <button 
+          class="send-button" 
+          on:click={sendSignedMessage} 
+          disabled={!messageText || !recipientUsername}
+        >
+          Send Message
+        </button>
       </div>
-      
-      <!-- Message format inspection section -->
-      {#if lastSignedMessage}
-        <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px;">
-          <button on:click={toggleMessageFormat}>
-            {showMessageFormat ? 'Hide' : 'Show'} Signed Message Format
-          </button>
-          
-          {#if showMessageFormat}
-            <div style="background-color: #f5f5f5; padding: 10px; margin-top: 10px; border-radius: 5px; overflow-x: auto;">
-              <h3>Last Signed Message:</h3>
-              <pre>{formatJSON(lastSignedMessage)}</pre>
-            </div>
-          {/if}
-        </div>
-      {/if}
     </div>
   {/if}
 </div>
+
+<style>
+  .chat-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  
+  header {
+    margin-bottom: 20px;
+  }
+  
+  h1 {
+    margin: 0 0 10px 0;
+  }
+  
+  .status-bar {
+    color: #666;
+    font-size: 14px;
+  }
+  
+  .user-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+  }
+  
+  .logout-btn {
+    padding: 5px 10px;
+    background-color: #f0f0f0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  .recipient-input input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 15px;
+  }
+  
+  .message-container {
+    border: 1px solid #eee;
+    border-radius: 4px;
+    height: 300px;
+    overflow-y: auto;
+    padding: 10px;
+    margin-bottom: 15px;
+    background-color: #f9f9f9;
+  }
+  
+  .message-item {
+    margin-bottom: 8px;
+    padding: 4px 0;
+  }
+  
+  .system-message {
+    color: #666;
+  }
+  
+  .error-message {
+    color: #d32f2f;
+  }
+  
+  .sent-message {
+    color: #1976d2;
+  }
+  
+  .received-message {
+    color: #2e7d32;
+  }
+  
+  .delivered-message {
+    color: #ed6c02;
+    font-style: italic;
+  }
+  
+  .input-area {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    resize: vertical;
+  }
+  
+  .send-button {
+    padding: 10px;
+    background-color: #1976d2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  
+  .send-button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+  }
+  
+  .loading {
+    text-align: center;
+    padding: 20px;
+    color: #666;
+  }
+</style>

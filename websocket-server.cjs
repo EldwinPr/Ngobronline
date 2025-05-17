@@ -41,27 +41,31 @@ wss.on('connection', (ws) => {
         return;
       }
       
-      // Handle chat message
-      if (data.type === 'chat' && username && data.to && data.content) {
-        const recipientUsername = data.to;
+      // Handle signed message
+      if (data.type === 'signed_chat' && username && data.message) {
+        // Extract message info
+        const signedMessage = typeof data.message === 'string' 
+          ? JSON.parse(data.message) 
+          : data.message;
+        
+        const recipientUsername = signedMessage.receiver_username;
         const recipientWs = connections.get(recipientUsername);
         
-        console.log(`Message from ${username} to ${recipientUsername}: ${data.content}`);
+        console.log(`Signed message from ${username} to ${recipientUsername}`);
         
         // Forward to recipient if online
         if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
           recipientWs.send(JSON.stringify({
-            type: 'chat',
+            type: 'signed_chat',
             from: username,
-            content: data.content,
-            timestamp: Date.now()
+            message: signedMessage
           }));
           
           // Send delivery confirmation to sender
           ws.send(JSON.stringify({
             type: 'delivered',
             to: recipientUsername,
-            content: data.content
+            content: 'Message delivered'
           }));
         } else {
           // Recipient not online
