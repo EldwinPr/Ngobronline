@@ -1,4 +1,5 @@
-import type { Message, SignedMessage, WebSocketMessage } from './types';
+import type { Message, SignedMessage, WebSocketMessage, VerificationStatus } from './types';
+import { verifySignedMessage } from './verifyMessage';
 
 export class WebSocketService {
   private ws: WebSocket | null = null;
@@ -6,17 +7,22 @@ export class WebSocketService {
   private username: string = '';
   private userIdentified = false;
   private connectionStatusCallback: (status: string) => void;
-  private messageCallback: (message: Message) => void;
+  private messageCallback: (message: Message & { id?: string }) => void;
+  private verificationUpdateCallback: (messageId: string, status: VerificationStatus, isValid?: boolean) => void;
   
   constructor(
     connectionStatusCallback: (status: string) => void,
-    messageCallback: (message: Message) => void
+    messageCallback: (message: Message & { id?: string }) => void,
+    verificationUpdateCallback: (messageId: string, status: VerificationStatus, isValid?: boolean) => void
   ) {
     this.connectionStatusCallback = connectionStatusCallback;
     this.messageCallback = messageCallback;
+    this.verificationUpdateCallback = verificationUpdateCallback;
   }
   
-  // Connect to WebSocket server
+  /**
+   * Connect to the WebSocket server
+   */
   connect(username: string): void {
     if (!username) return;
     
@@ -45,7 +51,23 @@ export class WebSocketService {
     this.ws.onmessage = this.handleMessage.bind(this);
   }
   
-  // Handle incoming WebSocket message
+  /**
+   * Identify user to the server
+   */
+  private identifyUser(): void {
+    if (!this.connected || !this.username || !this.ws) return;
+    
+    this.ws.send(JSON.stringify({
+      type: 'identify',
+      username: this.username
+    }));
+    
+    this.userIdentified = true;
+  }
+  
+  /**
+   * Handle incoming WebSocket messages
+   */
   private handleMessage(event: MessageEvent): void {
     try {
       const data: WebSocketMessage = JSON.parse(event.data);
@@ -73,13 +95,22 @@ export class WebSocketService {
               signedMsg = data.message as SignedMessage;
             }
             
-            // Add to messages
+            // Generate a unique ID for this message
+            const messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+            
+            // Add to messages with pending verification status
             this.messageCallback({
               type: 'received',
               from: signedMsg.sender_username,
               content: signedMsg.plaintext_message,
-              timestamp: new Date(signedMsg.timestamp).toLocaleTimeString()
+              timestamp: new Date(signedMsg.timestamp).toLocaleTimeString(),
+              verificationStatus: 'pending',
+              signedMessage: signedMsg,
+              id: messageId
             });
+            
+            // Begin verification process
+            this.verifyMessage(messageId, signedMsg);
             
           } catch (parseError) {
             console.error('Error processing signed message:', parseError);
@@ -104,25 +135,46 @@ export class WebSocketService {
             timestamp: new Date().toLocaleTimeString()
           });
           break;
+          
+        default:
+          console.log(`Unknown message type: ${data.type}`);
       }
     } catch (error) {
       console.error('Error parsing message:', error);
     }
   }
   
-  // Identify user to the server
-  private identifyUser(): void {
-    if (!this.connected || !this.username || !this.ws) return;
-    
-    this.ws.send(JSON.stringify({
-      type: 'identify',
-      username: this.username
-    }));
-    
-    this.userIdentified = true;
+  /**
+   * Verify a message and update its status
+   */
+  private async verifyMessage(messageId: string, signedMessage: SignedMessage): Promise<void> {
+    try {
+      // Update status to verifying
+      this.verificationUpdateCallback(messageId, 'verifying');
+      
+      // Perform the actual verification
+      const isValid = await verifySignedMessage(signedMessage);
+      
+      // Update the status based on the result
+      const status: VerificationStatus = isValid ? 'verified' : 'failed';
+      this.verificationUpdateCallback(messageId, status, isValid);
+      
+    } catch (error) {
+      console.error('Message verification error:', error);
+      this.verificationUpdateCallback(messageId, 'failed', false);
+    }
   }
   
-  // Send a signed message
+  /**
+   * Public method to manually reverify a message
+   */
+  public reverifyMessage(messageId: string, signedMessage: SignedMessage): void {
+    this.verifyMessage(messageId, signedMessage);
+  }
+  
+  /**
+   * Send a signed message
+   */
   async sendSignedMessage(recipientUsername: string, messageText: string, signMessageFunction: Function): Promise<void> {
     if (!this.connected || !this.userIdentified || !messageText || !recipientUsername || !this.ws) {
       throw new Error('Cannot send message: not connected or missing data');
@@ -157,7 +209,9 @@ export class WebSocketService {
     }
   }
   
-  // Disconnect from server
+  /**
+   * Disconnect from the WebSocket server
+   */
   disconnect(): void {
     if (this.ws) {
       this.ws.close();
@@ -167,7 +221,9 @@ export class WebSocketService {
     }
   }
   
-  // Check if connected
+  /**
+   * Check if connected and identified
+   */
   isConnected(): boolean {
     return this.connected && this.userIdentified;
   }

@@ -1,42 +1,10 @@
-import { secp256k1 } from './crypto/secp256k1-setup';
+import { secp256k1 } from '../crypto/secp256k1-setup';
 
-// Convert string to Uint8Array
-function stringToBytes(str: string): Uint8Array {
-  return new TextEncoder().encode(str);
-}
-
-// Convert any Uint8Array or ArrayBuffer to hex string
-function bufferToHex(buffer: Uint8Array | ArrayBuffer): string {
-  const view = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-  return Array.from(view)
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-// Convert hex string to Base64URL string for JWK format
-function hexToBase64Url(hexString: string): string {
-  // Convert hex to binary string
-  const hexRegex = /^[0-9a-fA-F]+$/;
-  if (!hexRegex.test(hexString)) {
-    throw new Error('Invalid hex string');
-  }
-  
-  let binary = '';
-  for (let i = 0; i < hexString.length; i += 2) {
-    const hex = hexString.substring(i, i + 2);
-    const decimal = parseInt(hex, 16);
-    binary += String.fromCharCode(decimal);
-  }
-  
-  // Convert binary string to base64
-  const base64 = btoa(binary);
-  
-  // Convert base64 to base64url
-  return base64
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
-}
+import { 
+  stringToBytes, 
+  bufferToHex, 
+  hexToBase64Url 
+} from '../utils/encoding';
 
 // Generate a deterministic private key with enhanced complexity
 async function generatePrivateKey(username: string, password: string): Promise<Uint8Array> {

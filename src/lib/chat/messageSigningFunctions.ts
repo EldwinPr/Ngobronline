@@ -1,50 +1,12 @@
-import { secp256k1 } from './crypto/secp256k1-setup';
-// Additional imports for message signing
+import { secp256k1 } from '../crypto/secp256k1-setup';
 import { hmac } from '@noble/hashes/hmac';
 import { sha256 } from '@noble/hashes/sha256';
-
-// Convert string to Uint8Array
-function stringToBytes(str: string): Uint8Array {
-  return new TextEncoder().encode(str);
-}
-
-// Convert any Uint8Array or ArrayBuffer to hex string
-function bufferToHex(buffer: Uint8Array | ArrayBuffer): string {
-  const view = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-  return Array.from(view)
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-// Convert hex string to Uint8Array
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
-  }
-  return bytes;
-}
-
-// Convert Base64URL to hex
-function base64UrlToHex(base64url: string): string {
-  // Restore padding
-  let base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
-  while (base64.length % 4) {
-    base64 += '=';
-  }
-  
-  // Decode base64 to binary
-  const binary = atob(base64);
-  
-  // Convert binary to hex
-  let hex = '';
-  for (let i = 0; i < binary.length; i++) {
-    const byte = binary.charCodeAt(i).toString(16).padStart(2, '0');
-    hex += byte;
-  }
-  
-  return hex;
-}
+import { 
+  stringToBytes, 
+  bufferToHex, 
+  hexToBytes,
+  base64UrlToHex
+} from '../utils/encoding';
 
 /**
  * Retrieves the private key from local storage and converts it to a format usable for signing

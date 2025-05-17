@@ -1,5 +1,5 @@
-// Types for chat functionality
 export type MessageType = 'system' | 'signed_chat' | 'error' | 'delivered' | 'sent' | 'received';
+export type VerificationStatus = 'pending' | 'verifying' | 'verified' | 'failed' | 'not_applicable';
 
 export interface Message {
   type: MessageType;
@@ -7,6 +7,8 @@ export interface Message {
   timestamp: string;
   from?: string;
   to?: string;
+  verificationStatus?: VerificationStatus;
+  signedMessage?: SignedMessage;
 }
 
 export interface WebSocketMessage {
