@@ -1,6 +1,25 @@
-// websocket-server.cjs
 const WebSocket = require('ws');
 const http = require('http');
+const { PrismaClient } = require('@prisma/client');
+
+require('dotenv').config();
+
+if (!process.env.DATABASE_URL) {
+  console.error('ERROR: DATABASE_URL environment variable is not set');
+  console.error('Please ensure your .env file contains DATABASE_URL');
+  process.exit(1);
+}
+
+const prisma = new PrismaClient();
+
+prisma.$connect()
+  .then(() => {
+    console.log('Successfully connected to database');
+  })
+  .catch((error) => {
+    console.error('Failed to connect to database:', error);
+    process.exit(1);
+  });
 
 const server = http.createServer();
 const wss = new WebSocket.Server({ noServer: true });
@@ -11,8 +30,9 @@ const connections = new Map();
 // Handle WebSocket connection
 wss.on('connection', (ws) => {
   let username = null;
+  let userId = null;
   
-  ws.on('message', (messageData) => {
+  ws.on('message', async (messageData) => {
     try {
       const message = messageData.toString();
       const data = JSON.parse(message);
@@ -30,53 +50,125 @@ wss.on('connection', (ws) => {
           return;
         }
         
-        connections.set(username, ws);
-        console.log(`User ${username} connected`);
-        
-        // Send confirmation
-        ws.send(JSON.stringify({
-          type: 'system',
-          message: `Connected as ${username}`
-        }));
+        // Lookup user ID from username
+        try {
+          const user = await prisma.user.findUnique({
+            where: { username: username }
+          });
+          
+          if (!user) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              message: `Invalid username: "${username}"`
+            }));
+            return;
+          }
+          
+          userId = user.id;
+          connections.set(username, ws);
+          console.log(`User ${username} (${userId}) connected`);
+          
+          // Send confirmation
+          ws.send(JSON.stringify({
+            type: 'system',
+            message: `Connected as ${username}`
+          }));
+          
+          // Deliver any pending messages
+          await deliverPendingMessages(username, userId, ws);
+        } catch (error) {
+          console.error(`Error identifying user ${username}:`, error);
+          ws.send(JSON.stringify({
+            type: 'error',
+            message: 'Internal server error during identification'
+          }));
+        }
         return;
       }
       
       // Handle signed message
-      if (data.type === 'signed_chat' && username && data.message) {
-        // Extract message info
-        const signedMessage = typeof data.message === 'string' 
-          ? JSON.parse(data.message) 
-          : data.message;
-        
-        const recipientUsername = signedMessage.receiver_username;
-        const recipientWs = connections.get(recipientUsername);
-        
-        console.log(`Signed message from ${username} to ${recipientUsername}`);
-        
-        // Forward to recipient if online
-        if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-          recipientWs.send(JSON.stringify({
-            type: 'signed_chat',
-            from: username,
-            message: signedMessage
-          }));
+      if (data.type === 'signed_chat' && username && userId && data.message) {
+        try {
+          // Extract message info
+          const signedMessage = typeof data.message === 'string' 
+            ? JSON.parse(data.message) 
+            : data.message;
           
-          // Send delivery confirmation to sender
-          ws.send(JSON.stringify({
-            type: 'delivered',
-            to: recipientUsername,
-            content: 'Message delivered'
-          }));
-        } else {
-          // Recipient not online
+          const recipientUsername = signedMessage.receiver_username;
+          
+          // Find recipient's user ID
+          const recipient = await prisma.user.findUnique({
+            where: { username: recipientUsername }
+          });
+          
+          if (!recipient) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              message: `User "${recipientUsername}" not found`
+            }));
+            return;
+          }
+          
+          // Store message in database
+          const storedMessage = await prisma.message.create({
+            data: {
+              senderId: userId,
+              receiverId: recipient.id,
+              plaintextContent: signedMessage.plaintext_message,
+              messageHash: signedMessage.message_hash,
+              signatureR: signedMessage.signature.r,
+              signatureS: signedMessage.signature.s,
+              status: 'PENDING' // Initial status
+            }
+          });
+          
+          console.log(`Stored message from ${username} to ${recipientUsername}`);
+          
+          // Check if recipient is online
+          const recipientWs = connections.get(recipientUsername);
+          
+          if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
+            // Forward message to recipient
+            recipientWs.send(JSON.stringify({
+              type: 'signed_chat',
+              from: username,
+              message: signedMessage
+            }));
+            
+            // Update message status to DELIVERED
+            await prisma.message.update({
+              where: { id: storedMessage.id },
+              data: { status: 'DELIVERED' }
+            });
+            
+            // Send delivery confirmation to sender
+            ws.send(JSON.stringify({
+              type: 'delivered',
+              to: recipientUsername,
+              content: `Message delivered to ${recipientUsername}`
+            }));
+            
+            console.log(`Delivered message from ${username} to ${recipientUsername}`);
+          } else {
+            // Recipient is offline, message stays PENDING
+            ws.send(JSON.stringify({
+              type: 'pending',
+              to: recipientUsername,
+              content: `User "${recipientUsername}" is not online. Message will be delivered when they connect.`
+            }));
+            
+            console.log(`Message from ${username} to ${recipientUsername} stored as pending`);
+          }
+        } catch (error) {
+          console.error('Error handling signed message:', error);
           ws.send(JSON.stringify({
             type: 'error',
-            message: `User "${recipientUsername}" is not online`
+            message: 'Failed to process or deliver message'
           }));
         }
       }
     } catch (error) {
-      console.error('Error handling message:', error);
+      console.error('Error handling WebSocket message:', error);
     }
   });
   
@@ -88,6 +180,72 @@ wss.on('connection', (ws) => {
     }
   });
 });
+
+// Function to deliver pending messages to a user when they connect
+async function deliverPendingMessages(username, userId, ws) {
+  try {
+    // Find all pending messages for this user
+    const pendingMessages = await prisma.message.findMany({
+      where: {
+        receiverId: userId,
+        status: 'PENDING'
+      },
+      include: {
+        sender: {
+          select: { username: true }
+        }
+      },
+      orderBy: {
+        createdAt: 'asc'
+      }
+    });
+    
+    console.log(`Found ${pendingMessages.length} pending messages for ${username}`);
+    
+    // Deliver each pending message
+    for (const msg of pendingMessages) {
+      // Create signed message format
+      const signedMessage = {
+        sender_username: msg.sender.username,
+        receiver_username: username,
+        plaintext_message: msg.plaintextContent,
+        message_hash: msg.messageHash,
+        signature: {
+          r: msg.signatureR,
+          s: msg.signatureS
+        },
+        timestamp: msg.createdAt.toISOString()
+      };
+      
+      // Send to recipient
+      ws.send(JSON.stringify({
+        type: 'signed_chat',
+        from: msg.sender.username,
+        message: signedMessage
+      }));
+      
+      // Update status to DELIVERED
+      await prisma.message.update({
+        where: { id: msg.id },
+        data: { status: 'DELIVERED' }
+      });
+      
+      console.log(`Delivered pending message from ${msg.sender.username} to ${username}`);
+      
+      // Optionally notify original sender if they're online
+      const senderWs = connections.get(msg.sender.username);
+      if (senderWs && senderWs.readyState === WebSocket.OPEN) {
+        senderWs.send(JSON.stringify({
+          type: 'delivered',
+          to: username,
+          content: `Message delivered to ${username}`
+        }));
+      }
+    }
+  } catch (error) {
+    console.error(`Error delivering pending messages to ${username}:`, error);
+  }
+}
 
 // Handle upgrade
 server.on('upgrade', (request, socket, head) => {
