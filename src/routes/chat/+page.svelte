@@ -39,8 +39,8 @@
       return msg.from === state.recipientUsername;
     }
 
-    if (msg.type === 'system') {
-      return false; // Exclude system messages
+    if (msg.type === 'system' || msg.type === 'delivered' || msg.type === 'error') {
+      return false;
     }
     
     // For other message types (delivered, saved), show if they relate to current recipient
