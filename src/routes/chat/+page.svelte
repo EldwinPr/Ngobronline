@@ -29,18 +29,18 @@
   
   // Filter messages to only show those from the current conversation
   $: chatMessages = state.messages.filter(msg => {
-    // Only show sent and received messages, ignore system notifications
-    if (!['sent', 'received'].includes(msg.type)) {
-      return false;
-    }
-
     // For sent messages, show if they were sent to the current recipient
     if (msg.type === 'sent') {
       return msg.to === state.recipientUsername;
     }
     
     // For received messages, show if they were from the current recipient
-    return msg.from === state.recipientUsername;
+    if (msg.type === 'received') {
+      return msg.from === state.recipientUsername;
+    }
+    
+    // For other message types (delivered, saved), show if they relate to current recipient
+    return msg.to === state.recipientUsername;
   });
   
   // Sound notification for new messages in the current conversation
