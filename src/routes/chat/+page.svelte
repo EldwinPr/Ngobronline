@@ -38,6 +38,10 @@
     if (msg.type === 'received') {
       return msg.from === state.recipientUsername;
     }
+
+    if (msg.type === 'system') {
+      return false; // Exclude system messages
+    }
     
     // For other message types (delivered, saved), show if they relate to current recipient
     return msg.to === state.recipientUsername;
