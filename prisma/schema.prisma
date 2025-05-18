@@ -36,7 +36,9 @@ model Message {
   messageHash      String
   signatureR       String
   signatureS       String
-  createdAt        DateTime      @default(now())
 
+  signedMessageJson String
+  
+  createdAt        DateTime      @default(now())
   status           MessageStatus @default(PENDING)
 }

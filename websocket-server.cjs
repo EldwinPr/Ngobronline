@@ -70,10 +70,13 @@ async function storeOfflineMessage(senderUsername, recipientUsername, signedMess
       data: {
         senderId: sender.id,
         receiverId: recipient.id,
+        // Keep individual fields for backward compatibility
         plaintextContent: signedMessage.plaintext_message,
         messageHash: signedMessage.message_hash,
         signatureR: signedMessage.signature.r,
         signatureS: signedMessage.signature.s,
+        // Store complete signed message as JSON (primary source of truth)
+        signedMessageJson: JSON.stringify(signedMessage),
         status: 'PENDING'
       }
     });
@@ -124,20 +127,30 @@ async function deliverPendingMessages(username, socket) {
     
     // Send each message
     for (const message of pendingMessages) {
-      // Reconstruct signed message format
-      const signedMessage = {
-        sender_username: message.sender.username,
-        receiver_username: username,
-        plaintext_message: message.plaintextContent,
-        message_hash: message.messageHash, 
-        signature: {
-          r: message.signatureR,         
-          s: message.signatureS               
-        },
-        timestamp: message.createdAt.toISOString()
-      };
+      // Use JSON version as primary source of truth
+      let signedMessage;
+      
+      try {
+        // Try to parse the JSON field first
+        signedMessage = JSON.parse(message.signedMessageJson);
+        console.log('Using signedMessageJson for reconstruction');
+      } catch (jsonError) {
+        // Fallback to reconstructing from individual fields for backward compatibility
+        console.log('JSON parse failed, falling back to individual fields');
+        signedMessage = {
+          sender_username: message.sender.username,
+          receiver_username: username,
+          plaintext_message: message.plaintextContent,
+          message_hash: message.messageHash,
+          signature: {
+            r: message.signatureR,
+            s: message.signatureS
+          },
+          timestamp: message.createdAt.toISOString()
+        };
+      }
 
-      console.log('Reconstructed message:', JSON.stringify(signedMessage, null, 2));
+      console.log('Delivering message:', JSON.stringify(signedMessage, null, 2));
       
       // Send to user
       socket.send(JSON.stringify({
