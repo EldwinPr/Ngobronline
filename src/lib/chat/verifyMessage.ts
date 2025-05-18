@@ -99,7 +99,7 @@ export async function verifySignedMessage(signedMessage: SignedMessage, forceRef
     // Step 1: Get sender's public key - with option to force refresh
     const publicKeyJwk = await getPublicKey(signedMessage.sender_username, forceRefresh);
     
-    // Step 2: Recreate the message hash (same as during signing)
+    // Step 2: Recreate the message hash
     const messageHash = await createMessageHash({
       sender_username: signedMessage.sender_username,
       receiver_username: signedMessage.receiver_username,
