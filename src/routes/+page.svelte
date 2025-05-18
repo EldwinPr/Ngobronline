@@ -179,9 +179,9 @@
         </h4>
         <div class="grid grid-cols-2 gap-4 text-center">
           <div class="p-4 rounded-lg hover:shadow-md transition-shadow" style="background-color: var(--color-surface-hover);">
-            <div class="text-2xl mb-2">🔒</div>
-            <div class="text-sm font-medium" style="color: var(--color-text)">100% Aman</div>
-            <div class="text-xs" style="color: var(--color-text-muted)">Chat yang mudah & aman</div>
+            <div class="text-2xl mb-2">👍</div>
+            <div class="text-sm font-medium" style="color: var(--color-text)">User Friendly</div>
+            <div class="text-xs" style="color: var(--color-text-muted)">Chat yang mudah digunakan dan dipahami</div>
           </div>
           <div class="p-4 rounded-lg hover:shadow-md transition-shadow" style="background-color: var(--color-surface-hover);">
             <div class="text-2xl mb-2">⚡</div>
