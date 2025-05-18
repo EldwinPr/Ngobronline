@@ -65,7 +65,7 @@
     </div>
 
     <!-- Content -->
-    <div class="relative z-10 flex items-center justify-center text-white p-12 pl-48 min-h-full">
+    <div class="relative z-10 flex items-center justify-center text-white p-12 pl-24 min-h-full">
       <div class="space-y-8 max-w-md w-full">
         <div class="text-center">
           <h3 class="text-6xl font-bold">ngobronline</h3>
