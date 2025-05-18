@@ -98,9 +98,22 @@
     if (msg) chatState.update(s => ({ ...s, selectedMessage: msg, showVerificationDetails: true }));
   };
 
+  const clearCookies = () => {
+    document.cookie.split(';').forEach(cookie => {
+      const [name] = cookie.split('=');
+      document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/`;
+    });
+  };
+
   const handleLogout = () => {
     try {
-      ['username', 'user_id', 'ecdsa_private_key'].forEach(localStorage.removeItem);
+      // Clear localStorage
+      ['username', 'user_id', 'ecdsa_private_key'].forEach(key => localStorage.removeItem(key));
+      
+      // Clear cookies
+      clearCookies();
+
+      // Redirect to login page
       goto('/login');
     } catch (error) {
       console.error('Logout failed:', error);
