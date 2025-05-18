@@ -1,313 +1,277 @@
-<!-- src/routes/chat/+page.svelte (Refactored) -->
+<!-- src/routes/chat/+page.svelte (Clean & Concise) -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { browser } from '$app/environment';
+  import { goto } from '$app/navigation';
   import { chatState } from '$lib/chat/chatState';
   import { initializeChat, setupBeforeUnload, cleanupChat } from '$lib/chat/chatInitialization';
   import { loadConversation } from '$lib/chat/chatHandlers';
-  import { sendSignedMessage, handleKeydown, reverifyMessage } from '$lib/chat/messageActions';
-  import { 
-    toggleContacts, 
-    showVerificationDetails, 
-    closeVerificationDetails, 
-    toggleDebugInfo, 
-    clearDebugLogs, 
-    logout,
-    updateMessageText 
-  } from '$lib/chat/uiActions';
-  import { formatJSON, getVerificationIcon, getVerificationColor } from '$lib/chat/uiHelpers';
+  import { sendSignedMessage, reverifyMessage } from '$lib/chat/messageActions';
+  import { getVerificationIcon, getVerificationColor } from '$lib/chat/uiHelpers';
   import ContactList from '../../components/contactList.svelte';
-  import type { Message } from '$lib/chat/types';
+  import ChatBubble from '../../components/chatBubble.svelte';
+  import InputMessage from '../../components/inputMessage.svelte';
+  import SettingsModal from '../../components/SettingsModal.svelte';
 
-  // WebSocket service instance
   let websocketService = initializeChat();
   let cleanupBeforeUnload: (() => void) | undefined;
+  let showSettings = false;
+  let isMobile = false;
 
-  // Reactive state from store
   $: state = $chatState;
+  $: hasSelectedContact = !!state.recipientUsername;
 
-  // Event handlers
-  function handleSelectContact(selectedUsername: string) {
+  function handleSelectContact(selectedUsername: string): void {
     if (selectedUsername !== state.recipientUsername) {
       loadConversation(websocketService, selectedUsername);
     }
   }
 
-  function handleSendMessage() {
+  function handleInputSend(event: CustomEvent<{ message: string }>): void {
+    chatState.update(s => ({ ...s, messageText: event.detail.message }));
     sendSignedMessage(websocketService);
   }
 
-  function handleMessageKeydown(event: KeyboardEvent) {
-    handleKeydown(event, websocketService);
+  function handleBubbleReverify(event: CustomEvent<{ messageId: string }>): void {
+    const message = state.messages.find(msg => msg.id === event.detail.messageId);
+    if (message) reverifyMessage(websocketService, message);
   }
 
-  function handleReverifyMessage(message: Message & { id?: string }) {
-    reverifyMessage(websocketService, message);
+  function handleBubbleShowDetails(event: CustomEvent<{ messageId: string }>): void {
+    const message = state.messages.find(msg => msg.id === event.detail.messageId);
+    if (message) {
+      chatState.update(s => ({ ...s, selectedMessage: message, showVerificationDetails: true }));
+    }
   }
 
-  function handleShowDetails(message: Message & { id?: string }) {
-    showVerificationDetails(message);
+  function handleBackToContacts(): void {
+    chatState.update(s => ({ ...s, recipientUsername: '', messages: [] }));
   }
 
-  function handleMessageTextInput(event: Event) {
-    const target = event.target as HTMLTextAreaElement;
-    updateMessageText(target.value);
+  function handleLogout(): void {
+    if (browser) {
+      ['username', 'user_id', 'ecdsa_private_key'].forEach(key => localStorage.removeItem(key));
+      document.cookie = 'session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      sessionStorage.clear();
+      goto('/login');
+    }
   }
 
-  // Component lifecycle
+  function checkMobile(): void {
+    isMobile = window.innerWidth < 768;
+  }
+
   onMount(() => {
     cleanupBeforeUnload = setupBeforeUnload();
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
   });
 
   onDestroy(() => {
     cleanupChat(websocketService);
-    if (cleanupBeforeUnload) {
-      cleanupBeforeUnload();
-    }
+    cleanupBeforeUnload?.();
   });
 </script>
 
-<div class="max-w-5xl mx-auto p-4 font-sans">
-  <header class="mb-4">
-    <div class="flex justify-between items-center">
-      <h1 class="text-xl font-bold">Secure Chat</h1>
-      
+<svelte:head>
+  <title>{hasSelectedContact ? `Chat dengan ${state.recipientUsername} - ngobronline` : 'Chat - ngobronline'}</title>
+</svelte:head>
+
+<div class="h-screen flex flex-col bg-background text-text">
+  <!-- Header -->
+  <header class="flex items-center justify-between p-4 bg-surface border-b border-border">
+    <div class="flex items-center gap-4">
+      <h1 class="text-xl font-bold text-primary">ngobronline</h1>
       <div class="flex items-center gap-2">
-        <span class="text-sm text-gray-600">Status: {state.connectionStatus}</span>
-        <span class="text-sm text-gray-600">User: {state.username}</span>
-        <button 
-          class="px-2 py-1 bg-gray-100 border border-gray-300 rounded text-sm"
-          on:click={logout}
-        >
-          Logout
-        </button>
+        <div class="w-2 h-2 rounded-full {state.connectionStatus === 'Connected to server' ? 'bg-success animate-pulse' : 'bg-error'}"></div>
+        <span class="text-sm text-text-secondary">{state.connectionStatus}</span>
       </div>
-    </div>
-  </header>
-  
-  {#if state.loadingUsername}
-    <div class="text-center p-4 text-gray-600">Loading user information...</div>
-  {:else if !state.username}
-    <div class="text-red-500 p-4">
-      <p>Not logged in. Redirecting to login page...</p>
-    </div>
-  {:else}
-    <!-- Mobile contacts toggle button -->
-    <div class="md:hidden mb-3">
-      <button 
-        class="w-full py-2 bg-blue-600 text-white font-medium rounded"
-        on:click={toggleContacts}
-      >
-        {state.showContacts ? 'Hide Contacts' : 'Show Contacts'}
-      </button>
     </div>
     
-    <div class="flex flex-col md:flex-row gap-4">
-      <!-- Contacts List -->
-      <div class={`${state.showContacts ? 'block' : 'hidden'} md:block md:w-1/3 bg-white p-3 rounded border`}>
-        <ContactList 
-          currentUsername={state.username}
-          onSelectContact={handleSelectContact}
-        />
+    <div class="flex items-center gap-3">
+      <span class="hidden sm:block text-sm font-medium">{state.username}</span>
+      <div class="w-8 h-8 rounded-full bg-primary text-primary-text flex items-center justify-center font-semibold">
+        {state.username.charAt(0).toUpperCase()}
       </div>
-      
-      <!-- Chat Area -->
-      <div class={`${state.showContacts ? 'hidden' : 'block'} md:block md:w-2/3 flex flex-col gap-3`}>
-        {#if state.recipientUsername}
-          <div class="bg-white p-3 rounded border flex justify-between items-center">
-            <div>
-              <h2 class="font-medium">Chat with: {state.recipientUsername}</h2>
+      <button class="btn btn-ghost p-2" on:click={() => showSettings = true} title="Pengaturan">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+      </button>
+      <button class="btn btn-ghost p-2" on:click={handleLogout} title="Keluar">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 overflow-hidden relative">
+    {#if state.loadingUsername}
+      <div class="flex items-center justify-center h-full">
+        <div class="text-center">
+          <div class="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p class="text-text-secondary">Memuat informasi pengguna...</p>
+        </div>
+      </div>
+    {:else if !state.username}
+      <div class="flex items-center justify-center h-full">
+        <div class="text-center">
+          <p class="text-error">Tidak dalam keadaan login.</p>
+          <p class="text-text-muted text-sm mt-2">Mengalihkan ke halaman login...</p>
+        </div>
+      </div>
+    {:else}
+      <!-- Layout Container -->
+      <div class="h-full transition-all duration-500 ease-out {hasSelectedContact ? 'grid grid-cols-[320px_1fr]' : 'flex justify-center'}">
+        <!-- Contacts Panel -->
+        <div class="bg-surface border border-border {hasSelectedContact ? 'rounded-none border-r h-full' : 'rounded-lg shadow-lg w-96 max-w-md h-full'} transition-all duration-500 ease-out">
+          <ContactList 
+            currentUsername={state.username}
+            selectedContact={state.recipientUsername}
+            onSelectContact={handleSelectContact}
+          />
+        </div>
+
+        <!-- Chat Panel -->
+        {#if hasSelectedContact}
+          <div class="flex flex-col bg-background animate-fadeIn">
+            <!-- Chat Header -->
+            <div class="flex items-center gap-3 p-4 bg-surface border-b border-border">
+              {#if isMobile}
+                <button class="btn btn-ghost p-2" on:click={handleBackToContacts}>
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                  </svg>
+                </button>
+              {/if}
+              <div class="w-10 h-10 rounded-full bg-accent text-white flex items-center justify-center font-semibold">
+                {state.recipientUsername.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <h2 class="font-semibold">{state.recipientUsername}</h2>
+                <p class="text-sm text-success">Online</p>
+              </div>
             </div>
-            
-            <!-- Show contacts button on mobile -->
-            <button 
-              class="md:hidden px-2 py-1 bg-gray-100 border border-gray-300 rounded text-sm"
-              on:click={toggleContacts}
-            >
-              Back to Contacts
-            </button>
-          </div>
-          
-          <!-- Messages Container -->
-          <div class="border border-gray-200 rounded h-96 overflow-y-auto p-3 bg-gray-50">
-            {#each state.messages as msg}
-              <div class="mb-3">
-                {#if msg.type === 'system'}
-                  <div class="text-gray-600 text-sm p-2 bg-gray-100 rounded">
-                    [{msg.timestamp}] SYSTEM: {msg.content}
+
+            <!-- Messages -->
+            <div class="flex-1 overflow-y-auto p-4 space-y-4">
+              {#each state.messages as message (message.id || `${message.timestamp}-${Math.random()}`)}
+                {#if ['system', 'error', 'delivered', 'saved'].includes(message.type)}
+                  <div class="text-center">
+                    <span class="text-xs px-3 py-1 rounded-full {
+                      message.type === 'system' ? 'bg-surface-hover text-text-muted' :
+                      message.type === 'error' ? 'bg-error text-white' :
+                      message.type === 'delivered' ? 'bg-success text-white' :
+                      'bg-warning text-white'
+                    }">
+                      {message.type === 'error' ? '❌ ' : message.type === 'delivered' ? '✓ ' : message.type === 'saved' ? '💾 ' : ''}{message.content}
+                    </span>
                   </div>
-                {:else if msg.type === 'error'}
-                  <div class="text-red-600 text-sm p-2 bg-red-50 rounded">
-                    [{msg.timestamp}] ERROR: {msg.content}
-                  </div>
-                {:else if msg.type === 'sent'}
-                  <div class="flex justify-end">
-                    <div class="text-white text-sm p-3 bg-blue-600 rounded-lg max-w-xs">
-                      <div class="text-xs text-blue-200 mb-1">
-                        Sent at {msg.timestamp}
-                      </div>
-                      <div>{msg.content}</div>
-                    </div>
-                  </div>
-                {:else if msg.type === 'received'}
-                  <div class="flex justify-start">
-                    <div class="text-sm p-3 bg-gray-100 rounded-lg max-w-xs">
-                      <div class="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                        <span>From {msg.from} at {msg.timestamp}</span>
-                        {#if msg.verificationStatus}
-                          <span 
-                            class={`font-bold ${getVerificationColor(msg.verificationStatus)}`}
-                            title="Verification: {msg.verificationStatus}"
-                          >
-                            {getVerificationIcon(msg.verificationStatus)}
-                          </span>
-                          <button 
-                            class="text-xs bg-gray-200 px-1 rounded" 
-                            on:click={() => handleReverifyMessage(msg)}
-                            title="Reverify message"
-                          >↺</button>
-                          <button 
-                            class="text-xs bg-gray-200 px-1 rounded" 
-                            on:click={() => handleShowDetails(msg)}
-                            title="Message details"
-                          >ℹ</button>
-                        {/if}
-                      </div>
-                      <div>{msg.content}</div>
-                    </div>
-                  </div>
-                {:else if msg.type === 'delivered'}
-                  <div class="text-amber-600 text-xs italic text-center my-1">
-                    {msg.content}
-                  </div>
-                {:else if msg.type === 'saved'}
-                  <div class="flex justify-center">
-                    <div class="text-amber-600 text-xs italic text-center my-1 bg-amber-50 px-2 py-1 rounded">
-                      {msg.content}
-                    </div>
-                  </div>
+                {:else}
+                  <ChatBubble
+                    message={message.content}
+                    time={message.timestamp}
+                    isSender={message.type === 'sent'}
+                    from={message.from || ''}
+                    verificationStatus={message.verificationStatus}
+                    messageId={message.id}
+                    on:reverify={handleBubbleReverify}
+                    on:showDetails={handleBubbleShowDetails}
+                    on:copy={() => {}}
+                  />
                 {/if}
-              </div>
-            {/each}
-            {#if state.messages.length === 0}
-              <div class="text-center py-10 text-gray-500">
-                No messages yet. Start the conversation!
-              </div>
-            {/if}
-          </div>
-          
-          <!-- Message Input -->
-          <div class="flex flex-col gap-2">
-            <textarea 
-              value={state.messageText}
-              on:input={handleMessageTextInput}
-              placeholder="Type your message..." 
-              on:keydown={handleMessageKeydown}
-              rows="3"
-              class="w-full p-3 border border-gray-300 rounded resize-y"
-            ></textarea>
-            <button 
-              on:click={handleSendMessage} 
-              disabled={!state.messageText || !state.recipientUsername}
-              class="py-2 bg-blue-600 text-white font-medium rounded disabled:bg-gray-400 disabled:cursor-not-allowed"
-            >
-              Send Message
-            </button>
-          </div>
-        {:else}
-          <div class="border border-gray-200 rounded p-10 text-center text-gray-500">
-            <p>Select a contact from the list to start chatting</p>
+              {/each}
+
+              {#if state.messages.length === 0}
+                <div class="flex items-center justify-center h-full text-center">
+                  <div>
+                    <div class="text-4xl mb-4 opacity-50">💬</div>
+                    <h3 class="text-lg font-semibold mb-2">Mulai percakapan</h3>
+                    <p class="text-text-muted">Kirim pesan pertama Anda ke {state.recipientUsername}</p>
+                  </div>
+                </div>
+              {/if}
+            </div>
+
+            <!-- Input -->
+            <div class="p-4 bg-surface border-t border-border">
+              <InputMessage
+                bind:message={state.messageText}
+                disabled={!state.recipientUsername}
+                recipientUsername={state.recipientUsername}
+                on:send={handleInputSend}
+                on:typing={() => {}}
+              />
+            </div>
           </div>
         {/if}
       </div>
-    </div>
-  {/if}
-  
-  <!-- Verification Modal -->
-  {#if state.showVerificationDetails && state.selectedMessage}
-    <div class="fixed inset-0 bg-black/50 flex justify-center items-center z-50">
-      <div class="bg-white rounded-lg w-11/12 max-w-lg max-h-[80vh] overflow-y-auto">
-        <div class="flex justify-between items-center p-4 border-b">
-          <h3 class="font-medium">Message Verification Details</h3>
-          <button class="text-lg" on:click={closeVerificationDetails}>✕</button>
-        </div>
-        
-        <div class="p-4">
-          <h4 class="font-medium">
-            Status: 
-            <span class={getVerificationColor(state.selectedMessage.verificationStatus)}>
-              {state.selectedMessage.verificationStatus}
-            </span>
-          </h4>
-          
-          <div class="my-3 p-2 bg-gray-100 rounded">
-            <div><strong>From:</strong> {state.selectedMessage.from}</div>
-            <div><strong>Message:</strong> {state.selectedMessage.content}</div>
-            <div><strong>Timestamp:</strong> {state.selectedMessage.timestamp}</div>
-          </div>
-          
-          {#if state.selectedMessage.signedMessage}
-            <div class="my-3">
-              <h4 class="font-medium">Signature Information:</h4>
-              <pre class="bg-gray-100 p-2 rounded overflow-x-auto text-xs">{formatJSON(state.selectedMessage.signedMessage.signature)}</pre>
-              
-              <h4 class="font-medium mt-3">Message Hash:</h4>
-              <pre class="bg-gray-100 p-2 rounded overflow-x-auto text-xs">{state.selectedMessage.signedMessage.message_hash}</pre>
-            </div>
-          {/if}
-          
-          <div class="flex justify-center mt-4">
-            <button 
-              class="px-4 py-2 bg-blue-600 text-white rounded" 
-              on:click={() => state.selectedMessage && handleReverifyMessage(state.selectedMessage)}
-            >
-              Verify Again
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  {/if}
+    {/if}
+  </main>
 </div>
 
-<!-- Debug Panel -->
-<div class="mt-4">
-  <button 
-    on:click={toggleDebugInfo}
-    class="px-2 py-1 bg-gray-200 border border-gray-300 rounded text-sm"
-  >
-    {state.showDebugInfo ? 'Hide' : 'Show'} Debug Info
-  </button>
-  
-  {#if state.showDebugInfo}
-    <div class="mt-2 border p-2 rounded bg-gray-50">
-      <div class="flex justify-between items-center mb-2">
-        <h3 class="font-bold">Message Debug Information</h3>
-        <button 
-          on:click={clearDebugLogs}
-          class="px-2 py-1 bg-red-100 border border-red-300 rounded text-xs"
-        >
-          Clear Logs
+<!-- Modals -->
+{#if showSettings}
+  <SettingsModal on:close={() => showSettings = false} />
+{/if}
+
+{#if state.showVerificationDetails && state.selectedMessage}
+  <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" on:click={() => chatState.update(s => ({ ...s, showVerificationDetails: false }))}>
+    <div class="bg-surface border border-border rounded-lg w-full max-w-lg" on:click|stopPropagation>
+      <div class="flex items-center justify-between p-4 border-b border-border">
+        <h3 class="font-semibold">Detail Verifikasi</h3>
+        <button class="btn btn-ghost p-1" on:click={() => chatState.update(s => ({ ...s, showVerificationDetails: false }))}>
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
         </button>
       </div>
-      
-      {#if state.debugMessages.length === 0}
-        <p class="text-gray-500 text-sm">No messages logged yet. Send or receive a message to see debug info.</p>
-      {:else}
-        <div class="max-h-96 overflow-y-auto">
-          {#each state.debugMessages as debug}
-            <div class="mb-3 p-2 border-b">
-              <div class="font-mono text-xs mb-1">
-                <span class={debug.direction === 'SENT' ? 'text-blue-600' : 'text-green-600'}>
-                  [{debug.direction}] {debug.timestamp}
-                </span>
-              </div>
-              <pre class="text-xs bg-gray-100 p-2 rounded overflow-x-auto">
-                {JSON.stringify(debug.data, null, 2)}
-              </pre>
-            </div>
-          {/each}
+      <div class="p-4 space-y-4">
+        <div class="flex items-center gap-2">
+          <span class="font-medium">Status:</span>
+          <span class="{getVerificationColor(state.selectedMessage.verificationStatus)}">
+            {getVerificationIcon(state.selectedMessage.verificationStatus)} {state.selectedMessage.verificationStatus}
+          </span>
         </div>
-      {/if}
+        <div class="space-y-2 text-sm">
+          <div><strong>Dari:</strong> {state.selectedMessage.from}</div>
+          <div><strong>Pesan:</strong> {state.selectedMessage.content}</div>
+          <div><strong>Waktu:</strong> {state.selectedMessage.timestamp}</div>
+        </div>
+        {#if state.selectedMessage.signedMessage}
+          <div>
+            <h4 class="font-medium mb-2">Hash Pesan:</h4>
+            <pre class="bg-surface-hover p-3 rounded text-xs font-mono overflow-x-auto">{state.selectedMessage.signedMessage.message_hash}</pre>
+          </div>
+        {/if}
+        <div class="flex justify-center pt-2">
+          <button class="btn btn-primary" on:click={() => state.selectedMessage && handleBubbleReverify({ detail: { messageId: state.selectedMessage.id! } } as CustomEvent<{ messageId: string }>)}>
+            Verifikasi Ulang
+          </button>
+        </div>
+      </div>
     </div>
-  {/if}
-</div>
+  </div>
+{/if}
+
+<style>
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateX(1rem); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  
+  .animate-fadeIn {
+    animation: fadeIn 0.5s ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .transition-all, .animate-fadeIn { 
+      transition: none; 
+      animation: none; 
+    }
+  }
+</style>
